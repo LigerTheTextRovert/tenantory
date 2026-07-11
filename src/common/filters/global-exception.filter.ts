@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { RequestWithRequestId } from '../middleware/request-id.middleware';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -19,9 +20,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = context.getRequest<Request>();
     const response = context.getResponse<Response>();
 
-    const requestId = (request as unknown as Record<string, unknown>)[
-      'requestId'
-    ] as string | undefined;
+    const { requestId } = request as RequestWithRequestId;
 
     const isHttpException = exception instanceof HttpException;
 
