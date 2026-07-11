@@ -19,6 +19,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = context.getRequest<Request>();
     const response = context.getResponse<Response>();
 
+    const requestId = (request as unknown as Record<string, unknown>)[
+      'requestId'
+    ] as string | undefined;
+
     const isHttpException = exception instanceof HttpException;
 
     const status = isHttpException
@@ -29,6 +33,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     let message: string | string[] = 'internal server error';
     let details: string[] | undefined;
+    let errorMessage = HttpStatus[status] ?? 'Unknown Error';
 
     if (typeof exceptionResponse === 'string') {
       message = exceptionResponse;
@@ -42,6 +47,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         error?: string;
       };
 
+      if (resp.error) {
+        errorMessage = resp.error;
+      }
+
       if (Array.isArray(resp.message)) {
         details = resp.message;
         message = 'validation failed';
@@ -53,12 +62,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     // Log server errors with full context; client errors are expected noise
     if (status >= 500) {
       this.logger.error(
-        `${request.method || 'UNKNOWN'} ${request.originalUrl || request.url} ${status}`,
-        exception instanceof Error ? exception.stack : String(exception),
+        `[${requestId ?? 'no-request-id'}] ${request.method || 'UNKNOWN'} ${request.originalUrl || request.url} ${status}`,
+        exception instanceof Error
+          ? exception.stack
+          : typeof exception === 'string'
+            ? exception
+            : JSON.stringify(exception),
       );
     }
-
-    const errorMessage = HttpStatus[status] ?? 'Unknown Error';
 
     response.status(status).json({
       success: false,
