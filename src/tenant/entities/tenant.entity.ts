@@ -1,4 +1,11 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 export enum TenantStatus {
   PENDING = 'pending',
@@ -7,23 +14,29 @@ export enum TenantStatus {
   ARCHIVED = 'archived',
 }
 
-@Entity('tenant')
+@Entity('tenants')
 export class Tenant {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'domain_name' })
+  @Index('idx_tenants_domain_name')
+  @Column({ name: 'domain_name', unique: true })
   domainName: string;
 
-  @Column({ name: 'business_name' })
+  @Column({ name: 'business_name', unique: true })
   businessName: string;
 
-  @Column({ type: 'enum', enum: TenantStatus, default: TenantStatus.PENDING })
+  @Column({
+    name: 'status',
+    type: 'enum',
+    enum: TenantStatus,
+    default: TenantStatus.PENDING,
+  })
   status: TenantStatus;
 
-  @Column({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @Column({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }
