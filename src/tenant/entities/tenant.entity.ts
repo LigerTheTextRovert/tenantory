@@ -3,9 +3,11 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { Category } from '../../category/entities/category.entity';
 
 export enum TenantStatus {
   PENDING = 'pending',
@@ -20,10 +22,10 @@ export class Tenant {
   id: string;
 
   @Index('idx_tenants_domain_name')
-  @Column({ name: 'domain_name', unique: true })
+  @Column({ name: 'domain_name', unique: true, length: 255 })
   domainName: string;
 
-  @Column({ name: 'business_name', unique: true })
+  @Column({ name: 'business_name', length: 255 })
   businessName: string;
 
   @Column({
@@ -33,6 +35,9 @@ export class Tenant {
     default: TenantStatus.PENDING,
   })
   status: TenantStatus;
+
+  @OneToMany(() => Category, (category) => category.tenant)
+  categories: Category[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
