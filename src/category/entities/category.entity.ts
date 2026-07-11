@@ -3,8 +3,10 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   Unique,
   UpdateDateColumn,
@@ -21,6 +23,7 @@ export class Category {
   @Column({ length: 120 })
   name: string;
 
+  @Index('idx_categories_slug')
   @Column({ length: 150 })
   slug: string;
 
@@ -31,14 +34,21 @@ export class Category {
   @JoinColumn({ name: 'tenant_id' })
   tenant: Tenant;
 
-  @CreateDateColumn({
-    name: 'created_at',
+  @Index('idx_categories_parent_id')
+  @ManyToOne(() => Category, (category) => category.children, {
+    nullable: true,
+    onDelete: 'SET NULL',
   })
+  @JoinColumn({ name: 'parent_id' })
+  parent?: Category | null;
+
+  @OneToMany(() => Category, (category) => category.parent)
+  children?: Category[];
+
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn({
-    name: 'updated_at',
-  })
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
   @DeleteDateColumn({ name: 'deleted_at' })
