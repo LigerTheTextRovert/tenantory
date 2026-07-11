@@ -4,14 +4,16 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import * as dotenv from 'dotenv';
 
-dotenv.config();
+const isProduction = process.env.NODE_ENV === 'production';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const context = host.switchToHttp();
     const request = context.getRequest<Request>();
@@ -25,7 +27,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     const exceptionResponse = isHttpException ? exception.getResponse() : null;
 
-    let message = 'internal server error';
+    let message: string | string[] = 'internal server error';
+    let details: string[] | undefined;
 
     if (typeof exceptionResponse === 'string') {
       message = exceptionResponse;
@@ -34,18 +37,38 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       typeof exceptionResponse === 'object' &&
       'message' in exceptionResponse
     ) {
-      // message = (exceptionResponse as { message: string | string[] }).message;
-      message = 'temp message';
+      const resp = exceptionResponse as {
+        message: string | string[];
+        error?: string;
+      };
+
+      if (Array.isArray(resp.message)) {
+        details = resp.message;
+        message = 'validation failed';
+      } else {
+        message = resp.message;
+      }
     }
+
+    // Log server errors with full context; client errors are expected noise
+    if (status >= 500) {
+      this.logger.error(
+        `${request.method || 'UNKNOWN'} ${request.originalUrl || request.url} ${status}`,
+        exception instanceof Error ? exception.stack : String(exception),
+      );
+    }
+
+    const errorMessage = HttpStatus[status] ?? 'Unknown Error';
 
     response.status(status).json({
       success: false,
       statusCode: status,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: request.originalUrl,
       message,
-
-      ...(process.env.NODE_ENV !== 'production' &&
+      error: errorMessage,
+      ...(details && { details }),
+      ...(!isProduction &&
         exception instanceof Error && {
           stack: exception.stack,
         }),
