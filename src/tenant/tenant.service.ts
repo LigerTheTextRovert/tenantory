@@ -14,14 +14,17 @@ export class TenantService {
     return this.tenantRepository.findOne({ where: { id } });
   }
 
-  async findByIdAndValidate(id: string): Promise<Tenant> {
+  async findByIdAndValidate(id: string): Promise<Tenant | null> {
     const tenant = await this.findById(id);
+
     if (!tenant) {
       return null;
     }
+
     if (tenant.status === TenantStatus.ARCHIVED) {
       return null;
     }
+
     return tenant;
   }
 }
