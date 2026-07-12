@@ -2,6 +2,9 @@
 /dist
 /node_modules
 /build
+/lessons
+/learning-records
+/assets
 
 # Logs
 logs
