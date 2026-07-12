@@ -15,19 +15,19 @@ enforce it, and make it impossible for any database query to bypass it.
 ## What You Will Build
 
 ```
-Request → TenantInterceptor → TenantGuard → Controller → Service → QueryBuilder
-                 │                  │                           │
-          Extract tenant_id    Verify tenant            Inject tenant_id
-          from header/sub-     is active & valid        into ALL queries
-          domain & bind to                              automatically
-          request context
+Request → TenantMiddleware → TenantGuard → TenantInterceptor → Controller → Service → QueryBuilder
+                │                  │               │                           │
+         Extract tenant_id    Verify tenant    Wrap in AsyncLocalStorage  Inject tenant_id
+         from header,         is active        so downstream code can     into ALL queries
+         validate UUID,       (defense in      access tenant without      automatically
+         lookup in DB         depth)           parameter passing
 ```
 
 Three components:
 
-1. **TenantInterceptor** — Extracts and validates tenant identity
-2. **TenantGuard** — Verifies tenant status is ACTIVE
-3. **TenantScopeMiddleware or Base Query pattern** — Injects tenant_id into queries
+1. **TenantMiddleware** — Extracts tenant from header, validates, and looks up in DB
+2. **TenantGuard** — Verifies tenant status is ACTIVE (defense in depth)
+3. **TenantInterceptor** — Wraps request in AsyncLocalStorage for downstream access
 
 ---
 
@@ -39,7 +39,7 @@ Before starting, ensure you have:
 - TypeORM connected to PostgreSQL
 - Tenant entity created and registered (already done)
 - Global ValidationPipe and HttpExceptionFilter wired (M1 — do this first)
-- Basic understanding of NestJS Interceptors, Guards, and Decorators
+- Basic understanding of NestJS Middleware, Interceptors, Guards, and Decorators
 
 ---
 
@@ -55,10 +55,11 @@ src/
 ├── tenant/
 │   ├── tenant.module.ts                  # Updated — export TenantService
 │   ├── tenant.service.ts                 # New — DB lookup for tenant validation
-│   ├── tenant.interceptor.ts             # New — extract tenant from request
+│   ├── tenant.middleware.ts              # New — extract tenant from request header
+│   ├── tenant.interceptor.ts             # New — AsyncLocalStorage for tenant scope
 │   ├── tenant.guard.ts                   # New — enforce ACTIVE status
 │   └── tenant-context.ts                 # AsyncLocalStorage for tenant scope
-└── main.ts                               # Register interceptor + guard globally
+└── main.ts                               # Register middleware + guard + interceptor globally
 ```
 
 ---
@@ -67,7 +68,7 @@ src/
 
 ### Why AsyncLocalStorage?
 
-NestJS interceptors and guards run on the request pipeline, but downstream
+NestJS middleware and guards run on the request pipeline, but downstream
 services and repositories may need the tenant_id without passing it through
 every function parameter. `AsyncLocalStorage` gives you a request-scoped
 execution context that any code in the call stack can read from.
@@ -93,10 +94,10 @@ context. When the request finishes, the context is garbage collected.
 
 ### Why a Service?
 
-The interceptor needs to verify that the tenant actually exists and is active.
-You don't want to hit the database directly from an interceptor — that violates
+The middleware needs to verify that the tenant actually exists and is active.
+You don't want to hit the database directly from middleware — that violates
 the separation of concerns. The service handles the DB lookup, and the
-interceptor calls the service.
+middleware calls the service.
 
 ### Create `src/tenant/tenant.service.ts`
 
@@ -117,7 +118,7 @@ export class TenantService {
     return this.tenantRepo.findOne({ where: { id } });
   }
 
-  async findByIdAndValidate(id: string): Promise<Tenant> {
+  async findByIdAndValidate(id: string): Promise<Tenant | null> {
     const tenant = await this.findById(id);
 
     if (!tenant) {
@@ -149,49 +150,56 @@ import { TenantService } from './tenant.service';
 export class TenantModule {}
 ```
 
-The `exports: [TenantService]` is mandatory. Without it, the guard and
-interceptor cannot inject TenantService.
+The `exports: [TenantService]` is mandatory. Without it, the middleware and
+guard cannot inject TenantService.
 
 ---
 
-## Step 3: Tenant Interceptor
+## Step 3: Tenant Middleware
 
 ### What It Does
 
 1. Reads the `X-Tenant-ID` header from the incoming request
 2. Validates it is a valid UUID
 3. Looks up the tenant in the database via TenantService
-4. Binds the tenant to the request context
-5. Runs the request inside AsyncLocalStorage so any downstream code
-   can access the tenant without explicit parameter passing
+4. Binds the tenant to the request context (`req.tenant` and `req.tenantId`)
+5. Calls `next()` to pass control to the next middleware/guard
 6. Returns 400 if header is missing or invalid
-7. Returns 404 if tenant does not exist
+7. Returns 404 if tenant does not exist or is archived
 
-### Create `src/tenant/tenant.interceptor.ts`
+### Why Middleware First?
+
+In NestJS, the request lifecycle is: **Middleware → Guards → Interceptors → Controller**.
+
+Middleware runs before everything else, making it the right place to:
+- Extract and validate the tenant identity from the header
+- Look up the tenant in the database
+- Set the tenant on the request object
+
+The guard then runs (after middleware) and can check the tenant status.
+The interceptor runs last and wraps the request in AsyncLocalStorage.
+
+If we tried to do tenant extraction in the interceptor, the guard would
+run first and find no tenant context — breaking the entire flow.
+
+### Create `src/tenant/tenant.middleware.ts`
 
 ```typescript
 import {
-  CallHandler,
-  ExecutionContext,
   Injectable,
-  NestInterceptor,
+  NestMiddleware,
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
-import { Observable, tap } from 'rxjs';
+import { Request, Response, NextFunction } from 'express';
 import { TenantService } from './tenant.service';
-import { tenantAsyncStorage } from './tenant-context';
 
 @Injectable()
-export class TenantInterceptor implements NestInterceptor {
+export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantService: TenantService) {}
 
-  async intercept(
-    context: ExecutionContext,
-    next: CallHandler,
-  ): Promise<Observable<any>> {
-    const request = context.switchToHttp().getRequest();
-    const tenantId = request.headers['x-tenant-id'];
+  async use(req: Request, _res: Response, next: NextFunction): Promise<void> {
+    const tenantId = req.headers['x-tenant-id'];
 
     // --- Step 1: Validate presence ---
     if (!tenantId) {
@@ -206,38 +214,40 @@ export class TenantInterceptor implements NestInterceptor {
       throw new BadRequestException('Invalid tenant ID format');
     }
 
-    // --- Step 3: Verify tenant exists and is active ---
+    // --- Step 3: Verify tenant exists and is not archived ---
     const tenant = await this.tenantService.findByIdAndValidate(tenantId);
 
     if (!tenant) {
       throw new NotFoundException('Tenant not found or is archived');
     }
 
-    // --- Step 4: Bind to request and AsyncLocalStorage ---
-    request.tenant = tenant;
-    request.tenantId = tenant.id;
+    // --- Step 4: Bind to request context ---
+    req['tenant'] = tenant;
+    req['tenantId'] = tenant.id;
 
-    // Run the rest of the request inside the tenant context
-    return tenantAsyncStorage.run({ tenantId: tenant.id }, () =>
-      next.handle(),
-    );
+    next();
   }
 }
 ```
 
 ### Key Decisions Explained
 
-**Why check status here and not in the guard?**
-The interceptor is the right place because it needs to resolve the tenant
-object before the guard runs. The guard then decides what to DO with that
-context (e.g., check user permissions against the tenant).
+**Why middleware and not interceptor for extraction?**
+NestJS execution order is Middleware → Guards → Interceptors. The guard
+needs `request.tenant` to be set before it runs. Middleware runs first,
+so it can set the tenant before the guard checks it.
 
-**Why AsyncStorage.run()?**
-Everything inside `next.handle()` (the controller, service, repository) runs
-inside this async context. Any downstream code can call
-`tenantAsyncStorage.getStore()?.tenantId` to get the current tenant without
-it being passed as a parameter. This eliminates the risk of forgetting to
-pass tenant_id through 5 layers of function calls.
+**Why check ARCHIVED status here but not SUSPENDED?**
+ARCHIVED tenants should return 404 (they don't exist anymore from the
+system's perspective). SUSPENDED tenants still exist but shouldn't be
+accessed — that's a 403 (Forbidden) which the guard handles. This
+distinction gives callers meaningful error codes.
+
+**Why `req['tenant']` instead of `req.tenant`?**
+Express's `Request` type doesn't have a `tenant` property by default.
+We use bracket notation to avoid TypeScript errors. A proper approach
+would be to extend the Express Request interface, but that's beyond M3
+scope.
 
 ---
 
@@ -245,13 +255,10 @@ pass tenant_id through 5 layers of function calls.
 
 ### What It Does
 
-1. Runs AFTER the interceptor (guards execute after interceptors in NestJS
-   — actually, interceptors wrap around the guard, so the tenant is already
-   resolved when the guard runs)
-2. Checks the tenant is in ACTIVE status (interceptor already does this, but
-   defense in depth is critical for security)
-3. Checks the tenant on the request matches the tenant in the URL or JWT
-   (prevents a user from spoofing a different tenant's context)
+1. Runs AFTER middleware (Guards execute after Middleware in NestJS)
+2. Checks the tenant is in ACTIVE status (middleware already validates existence,
+   but defense in depth is critical for security)
+3. Rejects non-ACTIVE tenants with 403 Forbidden
 
 ### Create `src/tenant/tenant.guard.ts`
 
@@ -276,7 +283,7 @@ export class TenantGuard implements CanActivate {
       throw new ForbiddenException('No tenant context established');
     }
 
-    // --- Enforce ACTIVE status (belt-and-suspenders with interceptor) ---
+    // --- Enforce ACTIVE status (belt-and-suspenders with middleware) ---
     if (tenant.status !== TenantStatus.ACTIVE) {
       throw new ForbiddenException(
         `Tenant is currently ${tenant.status}. Access denied.`,
@@ -288,10 +295,10 @@ export class TenantGuard implements CanActivate {
 }
 ```
 
-### Why a Separate Guard if the Interceptor Already Checks Status?
+### Why a Separate Guard if the Middleware Already Checks Status?
 
 **Defense in depth.** Security-critical checks should never rely on a single
-layer. If the interceptor is accidentally disabled, reordered, or bypassed
+layer. If the middleware is accidentally disabled, reordered, or bypassed
 (e.g., a WebSocket gateway), the guard is still there as a safety net.
 
 ---
@@ -304,8 +311,9 @@ layer. If the interceptor is accidentally disabled, reordered, or bypassed
 import { NestFactory } from '@nestjs/core';
 import { VersioningType } from '@nestjs/common';
 import { AppModule } from './app.module';
-import { TenantInterceptor } from './tenant/tenant.interceptor';
+import { TenantMiddleware } from './tenant/tenant.middleware';
 import { TenantGuard } from './tenant/tenant.guard';
+import { TenantInterceptor } from './tenant/tenant.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -317,27 +325,112 @@ async function bootstrap() {
     defaultVersion: '1',
   });
 
-  // --- Global Interceptor: extract tenant from every request ---
-  app.useGlobalInterceptors(app.get(TenantInterceptor));
+  // --- Global Middleware: extract tenant from every request ---
+  // Note: NestJS doesn't have app.useGlobalMiddleware()
+  // Middleware must be registered per-module or via configure()
+  // See Step 5a for the recommended approach
 
   // --- Global Guard: enforce tenant status on every request ---
   app.useGlobalGuards(app.get(TenantGuard));
+
+  // --- Global Interceptor: wrap in AsyncLocalStorage ---
+  app.useGlobalInterceptors(app.get(TenantInterceptor));
 
   await app.listen(process.env.PORT ?? 3000);
 }
 void bootstrap();
 ```
 
+### Step 5a: Register Middleware Globally
+
+NestJS doesn't support `app.useGlobalMiddleware()`. You have two options:
+
+**Option A: Register in AppModule (Recommended)**
+
+```typescript
+// src/app.module.ts
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { TenantModule } from './tenant/tenant.module';
+import { TenantMiddleware } from './tenant/tenant.middleware';
+
+@Module({
+  imports: [TenantModule],
+})
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(TenantMiddleware)
+      .forRoutes('*');  // Apply to all routes
+  }
+}
+```
+
+**Option B: Register in a shared CoreModule**
+
+If you have a `CoreModule` that other modules import, register there.
+This keeps `AppModule` clean.
+
 ### Why app.get() instead of new?
 
 NestJS's DI container manages the lifecycle of all injectables. Using
-`app.get(TenantInterceptor)` retrieves the already-instantiated interceptor
-from the container, so its dependencies (TenantService, etc.) are properly
-resolved. Creating with `new` bypasses DI entirely.
+`app.get(TenantGuard)` retrieves the already-instantiated guard
+from the container, so its dependencies are properly resolved.
+Creating with `new` bypasses DI entirely.
 
 ---
 
-## Step 6: Custom Decorator for Controller Access
+## Step 6: Tenant Interceptor (AsyncLocalStorage)
+
+### What It Does
+
+This interceptor has a single responsibility: wrap the request in
+`AsyncLocalStorage` so downstream code (services, repositories) can
+access the tenant without explicit parameter passing.
+
+It runs AFTER the middleware (which extracts and validates the tenant)
+and AFTER the guard (which checks status). By the time the interceptor
+runs, `request.tenantId` is already set.
+
+### Create `src/tenant/tenant.interceptor.ts`
+
+```typescript
+import {
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  NestInterceptor,
+} from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { tenantAsyncStorage } from './tenant-context';
+
+@Injectable()
+export class TenantInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const request = context.switchToHttp().getRequest();
+    const tenantId = request['tenantId'];
+
+    if (!tenantId) {
+      return next.handle();
+    }
+
+    return tenantAsyncStorage.run({ tenantId }, () => next.handle());
+  }
+}
+```
+
+### Why a Separate Interceptor for Just AsyncLocalStorage?
+
+**Single Responsibility.** The middleware handles extraction and validation.
+The guard handles status checking. The interceptor handles context propagation.
+
+This separation makes each component:
+- Easier to test in isolation
+- Easier to reason about
+- Less likely to have bugs (each does one thing)
+
+---
+
+## Step 7: Custom Decorator for Controller Access
 
 ### Why?
 
@@ -388,19 +481,20 @@ findOne(
 
 ---
 
-## Step 7: Testing
+## Step 8: Testing
 
-### Unit Test — TenantInterceptor
+### Unit Test — TenantMiddleware
 
-Create `src/tenant/tenant.interceptor.spec.ts`:
+Create `src/tenant/tenant.middleware.spec.ts`:
 
 ```typescript
-import { ExecutionContext, BadRequestException, NotFoundException } from '@nestjs/common';
-import { TenantInterceptor } from './tenant.interceptor';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { TenantMiddleware } from './tenant.middleware';
 import { TenantService } from './tenant.service';
+import { Request, Response, NextFunction } from 'express';
 
-describe('TenantInterceptor', () => {
-  let interceptor: TenantInterceptor;
+describe('TenantMiddleware', () => {
+  let middleware: TenantMiddleware;
   let tenantService: TenantService;
 
   const mockTenantService = {
@@ -409,16 +503,81 @@ describe('TenantInterceptor', () => {
 
   beforeEach(() => {
     tenantService = mockTenantService as any;
-    interceptor = new TenantInterceptor(tenantService);
+    middleware = new TenantMiddleware(tenantService);
   });
 
-  const createMockContext = (headers: Record<string, string>) => {
-    const request = { headers, tenant: null, tenantId: null };
-    const response = {};
+  const createMockRequest = (headers: Record<string, string>) => {
+    return { headers, tenant: null, tenantId: null } as unknown as Request;
+  };
+
+  const mockResponse = {} as Response;
+  let mockNext: NextFunction;
+
+  beforeEach(() => {
+    mockNext = jest.fn();
+  });
+
+  it('should throw BadRequestException when X-Tenant-ID is missing', async () => {
+    const request = createMockRequest({});
+
+    await expect(
+      middleware.use(request, mockResponse, mockNext),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should throw BadRequestException when tenant ID is not a valid UUID', async () => {
+    const request = createMockRequest({ 'x-tenant-id': 'not-a-uuid' });
+
+    await expect(
+      middleware.use(request, mockResponse, mockNext),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should throw NotFoundException when tenant is not found', async () => {
+    mockTenantService.findByIdAndValidate.mockResolvedValue(null);
+    const tenantId = '550e8400-e29b-41d4-a716-446655440000';
+    const request = createMockRequest({ 'x-tenant-id': tenantId });
+
+    await expect(
+      middleware.use(request, mockResponse, mockNext),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('should set tenant on request and call next()', async () => {
+    const mockTenant = { id: 'uuid-123', status: 'active' };
+    mockTenantService.findByIdAndValidate.mockResolvedValue(mockTenant);
+    const request = createMockRequest({ 'x-tenant-id': 'uuid-123' });
+
+    await middleware.use(request, mockResponse, mockNext);
+
+    expect(request['tenant']).toEqual(mockTenant);
+    expect(request['tenantId']).toBe('uuid-123');
+    expect(mockNext).toHaveBeenCalled();
+  });
+});
+```
+
+### Unit Test — TenantInterceptor
+
+Create `src/tenant/tenant.interceptor.spec.ts`:
+
+```typescript
+import { ExecutionContext } from '@nestjs/common';
+import { TenantInterceptor } from './tenant.interceptor';
+import { tenantAsyncStorage } from './tenant-context';
+
+describe('TenantInterceptor', () => {
+  let interceptor: TenantInterceptor;
+
+  beforeEach(() => {
+    interceptor = new TenantInterceptor();
+  });
+
+  const createMockContext = (tenantId: string | null) => {
+    const request = { tenantId };
     return {
       switchToHttp: () => ({
         getRequest: () => request,
-        getResponse: () => response,
       }),
     } as unknown as ExecutionContext;
   };
@@ -427,30 +586,25 @@ describe('TenantInterceptor', () => {
     handle: () => ({ subscribe: jest.fn() }),
   };
 
-  it('should throw BadRequestException when X-Tenant-ID is missing', async () => {
-    const context = createMockContext({});
+  it('should wrap request in AsyncLocalStorage when tenantId exists', () => {
+    const context = createMockContext('uuid-123');
+    const spy = jest.spyOn(tenantAsyncStorage, 'run');
 
-    await expect(
-      interceptor.intercept(context, mockNext as any),
-    ).rejects.toThrow(BadRequestException);
+    interceptor.intercept(context, mockNext as any);
+
+    expect(spy).toHaveBeenCalledWith(
+      { tenantId: 'uuid-123' },
+      expect.any(Function),
+    );
   });
 
-  it('should throw BadRequestException when tenant ID is not a valid UUID', async () => {
-    const context = createMockContext({ 'x-tenant-id': 'not-a-uuid' });
+  it('should call next.handle() directly when no tenantId', () => {
+    const context = createMockContext(null);
+    const spy = jest.spyOn(tenantAsyncStorage, 'run');
 
-    await expect(
-      interceptor.intercept(context, mockNext as any),
-    ).rejects.toThrow(BadRequestException);
-  });
+    interceptor.intercept(context, mockNext as any);
 
-  it('should throw NotFoundException when tenant is not found', async () => {
-    mockTenantService.findByIdAndValidate.mockResolvedValue(null);
-    const tenantId = '550e8400-e29b-41d4-a716-446655440000';
-    const context = createMockContext({ 'x-tenant-id': tenantId });
-
-    await expect(
-      interceptor.intercept(context, mockNext as any),
-    ).rejects.toThrow(NotFoundException);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 ```
@@ -526,32 +680,52 @@ Understanding this is critical for debugging:
 ```
 1. HTTP Request arrives
 2. NestJS route matching
-3. Global Interceptors run (TenantInterceptor)
+3. Middleware runs (TenantMiddleware)
    ├── Extracts X-Tenant-ID header
    ├── Validates UUID format
    ├── Looks up tenant in DB
    ├── Sets request.tenant + request.tenantId
-   └── Wraps downstream in AsyncLocalStorage context
+   └── Calls next() to proceed
 4. Global Guards run (TenantGuard)
    └── Verifies tenant.status === ACTIVE
 5. Route-specific Guards run (e.g., AuthGuard, RoleGuard)
-6. Controller method executes
-7. Service layer executes
-8. Repository / QueryBuilder executes (can read tenant from AsyncStore)
-9. Response flows back through interceptors (after interceptor hook)
-10. HTTP Response sent to client
+6. Global Interceptors run (TenantInterceptor)
+   └── Wraps downstream in AsyncLocalStorage context
+7. Controller method executes
+8. Service layer executes
+9. Repository / QueryBuilder executes (can read tenant from AsyncStore)
+10. Response flows back through interceptors (after interceptor hook)
+11. HTTP Response sent to client
 ```
+
+**Key insight:** NestJS execution order is Middleware → Guards → Interceptors → Controller.
+
+If you put tenant extraction in an interceptor, the guard would run first
+and find no tenant context — breaking the entire flow. That's why
+extraction belongs in middleware.
 
 ---
 
 ## Common Pitfalls
 
-### 1. Interceptor Not Resolving Dependencies
+### 1. Middleware Not Registered
 
-**Problem:** Creating interceptor with `new TenantInterceptor()` in main.ts
-instead of `app.get(TenantInterceptor)`.
+**Problem:** Middleware not applied to routes because it wasn't registered.
 
-**Fix:** Always use `app.get()` so DI resolves TenantService.
+**Fix:** NestJS doesn't have `app.useGlobalMiddleware()`. You must register
+middleware via `configure()` in a module:
+
+```typescript
+// CORRECT — in AppModule or a shared module
+configure(consumer: MiddlewareConsumer) {
+  consumer
+    .apply(TenantMiddleware)
+    .forRoutes('*');
+}
+
+// WRONG — this doesn't exist
+app.useGlobalMiddleware(app.get(TenantMiddleware));
+```
 
 ### 2. TenantService Not Exported
 
@@ -568,20 +742,20 @@ other module can inject TenantService.
 
 ```typescript
 // CORRECT
-return tenantAsyncStorage.run({ tenantId: tenant.id }, () => next.handle());
+return tenantAsyncStorage.run({ tenantId }, () => next.handle());
 
 // WRONG — context not set
 next.handle();
 ```
 
-### 4. Guard Running Before Interceptor
+### 4. Putting Tenant Extraction in Interceptor Instead of Middleware
 
-**Problem:** Confusion about execution order.
+**Problem:** Confusion about execution order leads to extracting tenant
+in an interceptor, which runs AFTER the guard.
 
-**Fact:** In NestJS, interceptors wrap around guards. The interceptor's
-`intercept()` runs first, calls `next.handle()`, and INSIDE that call,
-the guard runs. So by the time the guard executes, the interceptor has
-already set `request.tenant`. This is the correct behavior.
+**Fact:** NestJS execution order is Middleware → Guards → Interceptors.
+The guard needs `request.tenant` before it runs. If you put extraction
+in the interceptor, the guard will find no tenant and throw 403.
 
 ### 5. Forgetting to Handle Suspended Tenants
 
@@ -598,6 +772,14 @@ not 404. A missing tenant gets 404.
 prevents unnecessary DB queries with malformed input and guards against
 SQL injection at the application layer.
 
+### 7. Using `req.tenant` Instead of `req['tenant']`
+
+**Problem:** TypeScript error because Express's Request type doesn't have
+a `tenant` property.
+
+**Fix:** Use bracket notation: `req['tenant'] = tenant`. For type safety,
+extend the Express Request interface (optional, beyond M3 scope).
+
 ---
 
 ## Acceptance Criteria
@@ -612,7 +794,7 @@ M3 is complete when:
 - [ ] Every request with a valid active tenant proceeds to the controller
 - [ ] `@CurrentTenant()` decorator works in any controller
 - [ ] `tenantAsyncStorage.getStore()?.tenantId` is accessible in services
-- [ ] Unit tests pass for both interceptor and guard
+- [ ] Unit tests pass for middleware, guard, and interceptor
 - [ ] No controller or service can accidentally query across tenants
 
 ---
