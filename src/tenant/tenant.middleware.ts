@@ -6,11 +6,17 @@ import {
 } from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
 import { TenantService } from './tenant.service';
+import { Tenant } from './entities/tenant.entity';
+
+export interface TenantRequest extends Request {
+  tenant: Tenant;
+  tenantId: string;
+}
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantService: TenantService) {}
-  async use(req: Request, _res: Response, next: NextFunction) {
+  async use(req: TenantRequest, _res: Response, next: NextFunction) {
     const tenantId = req.headers['X-Tenant-Id'];
 
     if (!tenantId) {
