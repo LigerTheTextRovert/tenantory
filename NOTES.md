@@ -13,7 +13,7 @@
 - [x] L002 — DTOs & Validation: Class-Validator, ValidationPipe, Input Safety
 
 ### Phase 2: Dependency Injection (deeper patterns)
-- [ ] L003 — DI Deep Dive: Scopes, Custom Providers, @Inject Token
+- [x] L003 — DI Deep Dive: Scopes, Custom Providers, @Inject Token
 
 ### Phase 3: Guards, Interceptors, Custom Pipes
 - [ ] L004 — Guards: Authentication & Tenant Isolation Guard
