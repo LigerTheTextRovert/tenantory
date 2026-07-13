@@ -10,7 +10,7 @@ import { tenantAsyncStorage } from './tenant-context';
 
 @Injectable()
 export class TenantInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept<T>(context: ExecutionContext, next: CallHandler<T>): Observable<T> {
     const req = context.switchToHttp().getRequest<TenantRequest>();
     const tenantId = req.tenantId;
 
