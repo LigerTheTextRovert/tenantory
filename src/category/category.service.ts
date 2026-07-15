@@ -34,14 +34,11 @@ export class CategoryService {
       parent: parent ?? undefined,
     });
 
-    await this.categoryRepo.save(category);
-
     try {
       await this.categoryRepo.save(category);
       return category;
     } catch (err) {
-      if (err.code === '23505') {
-        // PG unique_violation
+      if (this.isUniqueViolation(err)) {
         throw new ConflictException(
           'The provided slug must be unique per-tenant',
         );
@@ -92,5 +89,39 @@ export class CategoryService {
     }
 
     return exist;
+  }
+
+  private buildTree(categories: Category[]): Category[] {
+    const map = new Map<string, Category>();
+
+    categories.forEach((category) =>
+      map.set(category.id, { ...category, children: [] }),
+    );
+
+    const roots: Category[] = [];
+
+    for (const category of categories) {
+      const node = map.get(category.id);
+
+      if (category.parent?.id) {
+        map.get(category.parent.id)?.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    return roots;
+  }
+
+  private isUniqueViolation(err: unknown): boolean {
+    // the '23505' error code is Postgresql unique_violation
+    if (
+      err instanceof Error &&
+      'code' in err &&
+      (err as any).code === '23505'
+    ) {
+      return true;
+    }
+    return false;
   }
 }
