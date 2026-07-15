@@ -9,6 +9,12 @@ import { IsNull, Repository } from 'typeorm';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { generateSlug } from '../common/utils/slug.util';
 import { Tenant } from '../tenant/entities/tenant.entity';
+import { CategoryQueryDto } from './dto/category-query.dto';
+import {
+  PaginatedResponse,
+  PaginationMeta,
+  PaginationLinks,
+} from '../common/interfaces/paginated-response.interface';
 
 @Injectable()
 export class CategoryService {
@@ -45,6 +51,71 @@ export class CategoryService {
       }
       throw err;
     }
+  }
+
+  async findAll(
+    tenantId: string,
+    query: CategoryQueryDto,
+  ): Promise<PaginatedResponse<Category>> {
+    const skip = (query.page - 1) * query.limit;
+    const qb = this.categoryRepo
+      .createQueryBuilder('category')
+      .where('category.tenant_id = :tenantId', { tenantId });
+
+    if (query.search) {
+      qb.andWhere('category.name ILIKE = :search', {
+        search: `%${query.search}%`,
+      });
+    }
+
+    if (query.parentId) {
+      if (query.parentId === null || query.parentId === '') {
+        qb.andWhere('category.deleted_at IS NULL');
+      } else {
+        qb.andWhere('category.parent_id = :parentId', {
+          parentId: query.parentId,
+        });
+      }
+    }
+
+    if (query.includeChildren === 'true') {
+      qb.leftJoinAndSelect('category.children', 'children');
+    }
+
+    // We already handled the default value in category query dto
+    qb.orderBy(`category.${query.sortBy}`, query.sortOrder);
+
+    const [data, counts] = await qb
+      .skip(skip)
+      .limit(query.limit)
+      .getManyAndCount();
+
+    const meta: PaginationMeta = {
+      totalItems: counts,
+      itemCount: data.length,
+      totalPages: Math.ceil(counts / query.limit),
+      itemsPerPage: query.limit,
+      currentPage: query.page,
+    };
+
+    const links: PaginationLinks = {
+      last: this.createLink(meta.totalPages, query.limit),
+      first: this.createLink(1, query.limit),
+      previous:
+        query.page > 1 ? this.createLink(query.page - 1, query.limit) : null,
+      next:
+        query.page < meta.totalPages
+          ? this.createLink(query.page + 1, query.limit)
+          : null,
+    };
+
+    const paginationResult: PaginatedResponse<Category> = {
+      data,
+      meta,
+      links,
+    };
+
+    return paginationResult;
   }
 
   private async assertSlugUnique(
