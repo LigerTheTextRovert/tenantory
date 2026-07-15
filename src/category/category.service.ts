@@ -124,4 +124,8 @@ export class CategoryService {
     }
     return false;
   }
+
+  private createLink(page: number, limit: number): string {
+    return `/api/v1/categories?page=${page}&limit=${limit}`;
+  }
 }
