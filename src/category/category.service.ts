@@ -189,7 +189,7 @@ export class CategoryService {
     if (
       err instanceof Error &&
       'code' in err &&
-      (err as any).code === '23505'
+      (err as Error & { code: string }).code === '23505'
     ) {
       return true;
     }
