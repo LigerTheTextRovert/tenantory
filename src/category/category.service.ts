@@ -155,6 +155,22 @@ export class CategoryService {
     return result;
   }
 
+  async remove(tenantId: string, id: string): Promise<void> {
+    const target = await this.findOne(tenantId, id);
+
+    const numberOfChildren = await this.categoryRepo.count({
+      where: { parent: { id }, tenant: { id: tenantId } },
+    });
+
+    if (numberOfChildren > 0) {
+      throw new ConflictException(
+        `Cannot delete category "${id}" because it has child categories. Please delete or reassign all child categories first.`,
+      );
+    }
+
+    await this.categoryRepo.softRemove(target);
+  }
+
   private async assertSlugUnique(
     tenantId: string,
     slug: string,
