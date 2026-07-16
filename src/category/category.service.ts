@@ -136,6 +136,25 @@ export class CategoryService {
     return this.buildTree(result);
   }
 
+  async findOne(tenantId: string, id: string): Promise<Category> {
+    const result = await this.categoryRepo.findOne({
+      where: {
+        id,
+        tenant: { id: tenantId },
+        deletedAt: IsNull(),
+      },
+      relations: { parent: true, children: true },
+    });
+
+    if (!result) {
+      throw new NotFoundException(
+        `Category with ID "${id}" not found for tenant ${tenantId}`,
+      );
+    }
+
+    return result;
+  }
+
   private async assertSlugUnique(
     tenantId: string,
     slug: string,
