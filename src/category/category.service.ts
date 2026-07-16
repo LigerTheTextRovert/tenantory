@@ -15,6 +15,7 @@ import {
   PaginationMeta,
   PaginationLinks,
 } from '../common/interfaces/paginated-response.interface';
+import { UpdateCategoryDto } from './dto/update-category.dto';
 
 @Injectable()
 export class CategoryService {
@@ -153,6 +154,47 @@ export class CategoryService {
     }
 
     return result;
+  }
+
+  async update(
+    tenantId: string,
+    id: string,
+    dto: UpdateCategoryDto,
+  ): Promise<Category> {
+    const target = await this.findOne(tenantId, id);
+
+    if (dto.name) {
+      target.name = dto.name;
+    }
+
+    if (dto.slug) {
+      target.slug = generateSlug(dto.slug);
+    } else if (dto.name && !dto.slug) {
+      target.slug = generateSlug(dto.name);
+    }
+
+    await this.assertSlugUnique(tenantId, target.slug, id);
+
+    if (dto.parentId !== undefined) {
+      if (dto.parentId === id) {
+        throw new ConflictException('A category cannot be its own parent');
+      }
+      if (dto.parentId) {
+        await this.assertParentExists(tenantId, dto.parentId);
+      }
+      target.parent = dto.parentId ? ({ id: dto.parentId } as Category) : null;
+    }
+
+    try {
+      return await this.categoryRepo.save(target);
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException(
+          'The provided slug must be unique per-tenant',
+        );
+      }
+      throw error;
+    }
   }
 
   async remove(tenantId: string, id: string): Promise<void> {
