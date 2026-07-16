@@ -118,6 +118,24 @@ export class CategoryService {
     return paginationResult;
   }
 
+  async findTree(tenantId: string): Promise<Category[]> {
+    const result = await this.categoryRepo.find({
+      where: {
+        tenant: { id: tenantId },
+        deletedAt: IsNull(),
+      },
+      order: { name: 'ASC' },
+    });
+
+    if (!result) {
+      throw new NotFoundException(
+        `There is no category for tenant ${tenantId}`,
+      );
+    }
+
+    return this.buildTree(result);
+  }
+
   private async assertSlugUnique(
     tenantId: string,
     slug: string,
