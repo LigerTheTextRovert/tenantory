@@ -5,6 +5,8 @@ import { Repository } from 'typeorm';
 import { CategoryService } from '../../category/category.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { isUniqueViolation } from '../../common/utils/assert-unique.util';
+import { ProductQueryDto } from './dto/product-query.dto';
+import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
 
 @Injectable()
 export class ProductService {
@@ -41,16 +43,74 @@ export class ProductService {
     }
   }
 
+  async findAll(
+    tenantId: string,
+    query: ProductQueryDto,
+  ): Promise<PaginatedResponse<Product>> {
+    const { page, limit, categoryId, search, isActive, sortBy, sortOrder } =
+      query;
+    const skip = (page - 1) * limit;
+
+    const qb = this.productRepo
+      .createQueryBuilder('p')
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .andWhere('p.deleted_at IS NULL');
+
+    if (search) {
+      qb.andWhere('p.name ILIKE :search', { search: `%${search}%` });
+    }
+
+    if (categoryId) {
+      qb.andWhere('p.category_id = :categoryId', { categoryId });
+    }
+
+    if (isActive !== undefined) {
+      qb.andWhere('p.is_active = :isActive', {
+        isActive: isActive === 'true',
+      });
+    }
+
+    qb.orderBy(`p.${sortBy}`, sortOrder);
+    const [data, totalItems] = await qb
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    const totalPages = Math.ceil(totalItems / limit) || 1;
+    const currentPage = page;
+    const itemCount = data.length;
+
+    const buildLink = (targetPage: number): string =>
+      `/api/v1/products?page=${targetPage}&limit=${limit}`;
+
+    return {
+      data,
+      meta: {
+        totalItems,
+        itemCount,
+        itemsPerPage: limit,
+        totalPages,
+        currentPage,
+      },
+      links: {
+        first: buildLink(1),
+        previous: currentPage > 1 ? buildLink(currentPage - 1) : null,
+        next: currentPage < totalPages ? buildLink(currentPage + 1) : null,
+        last: buildLink(totalPages),
+      },
+    };
+  }
+
   async assertSkuUniqueness(skuPrefix: string, tenantId: string) {
     const qb = this.productRepo
       .createQueryBuilder('p')
-      .where('tenant_id = :tenantId', { tenantId })
-      .andWhere('sku_prefix = :skuPrefix', { skuPrefix })
-      .andWhere('deleted_at IS NULL');
+      .where('p.tenant_id = :tenantId', { tenantId })
+      .andWhere('p.sku_prefix = :skuPrefix', { skuPrefix })
+      .andWhere('p.deleted_at IS NULL');
 
     const exist = await qb.getExists();
 
-    if (!exist) {
+    if (exist) {
       throw new ConflictException('The provided SKU already exist');
     }
   }
