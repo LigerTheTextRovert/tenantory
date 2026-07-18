@@ -16,6 +16,7 @@ import {
   PaginationLinks,
 } from '../common/interfaces/paginated-response.interface';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { isUniqueViolation } from '../common/utils/assert-unique.util';
 
 @Injectable()
 export class CategoryService {
@@ -45,7 +46,7 @@ export class CategoryService {
       await this.categoryRepo.save(category);
       return category;
     } catch (err) {
-      if (this.isUniqueViolation(err)) {
+      if (isUniqueViolation(err)) {
         throw new ConflictException(
           'The provided slug must be unique per-tenant',
         );
@@ -188,7 +189,7 @@ export class CategoryService {
     try {
       return await this.categoryRepo.save(target);
     } catch (error) {
-      if (this.isUniqueViolation(error)) {
+      if (isUniqueViolation(error)) {
         throw new ConflictException(
           'The provided slug must be unique per-tenant',
         );
@@ -277,18 +278,6 @@ export class CategoryService {
     }
 
     return roots;
-  }
-
-  private isUniqueViolation(err: unknown): boolean {
-    // the '23505' error code is Postgresql unique_violation
-    if (
-      err instanceof Error &&
-      'code' in err &&
-      (err as Error & { code: string }).code === '23505'
-    ) {
-      return true;
-    }
-    return false;
   }
 
   private createLink(page: number, limit: number): string {
