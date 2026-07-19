@@ -8,10 +8,11 @@ import { Product } from '../entities/product.entity';
 import { IsNull, Repository } from 'typeorm';
 import { CategoryService } from '../../category/category.service';
 import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 import { isUniqueViolation } from '../../common/utils/assert-unique.util';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
-import { NotFoundError } from 'rxjs';
+import { ProductVariant } from '../entities/product-variant.entity';
 
 @Injectable()
 export class ProductService {
@@ -123,6 +124,48 @@ export class ProductService {
     }
 
     return product;
+  }
+
+  async update(
+    tenantId: string,
+    id: string,
+    dto: UpdateProductDto,
+  ): Promise<Product> {
+    const product = await this.findOne(tenantId, id);
+
+    if (dto.skuPrefix && dto.skuPrefix !== product.skuPrefix) {
+      throw new ConflictException(
+        'Cannot change skuPrefix after creation. Existing variant SKUs depend on this prefix.',
+      );
+    }
+
+    if (dto.categoryId) {
+      await this.categoryService.findOne(tenantId, dto.categoryId);
+      product.category = { id: dto.categoryId } as Product['category'];
+    }
+
+    if (dto.name !== undefined) {
+      product.name = dto.name;
+    }
+
+    if (dto.description !== undefined) {
+      product.description = dto.description;
+    }
+
+    if (dto.isActive !== undefined) {
+      product.isActive = dto.isActive;
+    }
+
+    try {
+      return await this.productRepo.save(product);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException(
+          'The provided SKU must be unique per-tenant',
+        );
+      }
+      throw error;
+    }
   }
 
   async assertSkuUniqueness(skuPrefix: string, tenantId: string) {
