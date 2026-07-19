@@ -168,6 +168,28 @@ export class ProductService {
     }
   }
 
+  async remove(tenantId: string, id: string): Promise<void> {
+    const product = await this.findOne(tenantId, id);
+
+    const variantCount = await this.productRepo.manager
+      .getRepository(ProductVariant)
+      .count({
+        where: {
+          product: { id: product.id },
+          tenant: { id: tenantId },
+          deletedAt: IsNull(),
+        },
+      });
+
+    if (variantCount > 0) {
+      throw new ConflictException(
+        'Cannot delete product that has variants. Delete or reassign all variants first.',
+      );
+    }
+
+    await this.productRepo.softRemove(product);
+  }
+
   async assertSkuUniqueness(skuPrefix: string, tenantId: string) {
     const qb = this.productRepo
       .createQueryBuilder('p')
