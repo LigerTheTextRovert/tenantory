@@ -1,12 +1,17 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Product } from '../entities/product.entity';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { CategoryService } from '../../category/category.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { isUniqueViolation } from '../../common/utils/assert-unique.util';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
+import { NotFoundError } from 'rxjs';
 
 @Injectable()
 export class ProductService {
@@ -99,6 +104,25 @@ export class ProductService {
         last: buildLink(totalPages),
       },
     };
+  }
+
+  async findOne(tenantId: string, id: string): Promise<Product> {
+    const product = await this.productRepo.findOne({
+      where: {
+        id,
+        tenant: { id: tenantId },
+        deletedAt: IsNull(),
+      },
+      relations: { category: true, variants: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException(
+        `There is no product with ID ${id} in tenant ${tenantId}`,
+      );
+    }
+
+    return product;
   }
 
   async assertSkuUniqueness(skuPrefix: string, tenantId: string) {
