@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -31,7 +32,7 @@ export class ProductController {
   @Get(':id')
   async findOne(
     @TenantDecorator('id') tenantId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     await this.productService.findOne(tenantId, id);
   }
@@ -48,7 +49,7 @@ export class ProductController {
   @Patch(':id')
   async update(
     @TenantDecorator('id') tenantId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProductDto,
   ) {
     await this.productService.update(tenantId, id, dto);
