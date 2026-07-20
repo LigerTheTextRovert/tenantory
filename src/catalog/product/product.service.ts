@@ -76,7 +76,14 @@ export class ProductService {
       });
     }
 
-    qb.orderBy(`p.${sortBy}`, sortOrder);
+    const sortColumns: Record<string, string> = {
+      name: 'p.name',
+      created_at: 'p.created_at',
+      updated_at: 'p.updated_at',
+    };
+
+    qb.orderBy(sortColumns[sortBy], sortOrder);
+
     const [data, totalItems] = await qb
       .skip(skip)
       .take(limit)
