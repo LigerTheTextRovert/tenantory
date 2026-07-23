@@ -4,6 +4,7 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { TenantGuard } from './tenant/tenant.guard';
 import { TenantInterceptor } from './tenant/tenant.interceptor';
 import { setupSwagger } from './config/swagger.config';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -23,6 +24,7 @@ async function bootstrap() {
 
   app.useGlobalGuards(app.get(TenantGuard));
   app.useGlobalInterceptors(app.get(TenantInterceptor));
+  app.useGlobalFilters(app.get(GlobalExceptionFilter));
 
   setupSwagger(app);
 
