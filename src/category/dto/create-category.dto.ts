@@ -4,8 +4,8 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  Max,
-  Min,
+  MaxLength,
+  MinLength,
 } from 'class-validator';
 
 export class CreateCategoryDto {
@@ -17,8 +17,8 @@ export class CreateCategoryDto {
   })
   @IsNotEmpty()
   @IsString()
-  @Min(1)
-  @Max(120)
+  @MinLength(1)
+  @MaxLength(120)
   name!: string;
 
   @ApiPropertyOptional({
@@ -28,7 +28,7 @@ export class CreateCategoryDto {
   })
   @IsOptional()
   @IsString()
-  @Max(150)
+  @MaxLength(150)
   slug?: string;
 
   @ApiPropertyOptional({

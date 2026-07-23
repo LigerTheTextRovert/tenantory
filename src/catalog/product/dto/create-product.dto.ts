@@ -7,8 +7,8 @@ import {
   IsString,
   IsUUID,
   Matches,
-  Max,
-  Min,
+  MaxLength,
+  MinLength,
 } from 'class-validator';
 
 export class CreateProductDto {
@@ -20,8 +20,8 @@ export class CreateProductDto {
   })
   @IsNotEmpty()
   @IsString()
-  @Min(1)
-  @Max(255)
+  @MinLength(1)
+  @MaxLength(255)
   name!: string;
 
   @ApiPropertyOptional({
@@ -31,7 +31,7 @@ export class CreateProductDto {
   })
   @IsOptional()
   @IsString()
-  @Max(5000)
+  @MaxLength(5000)
   description?: string;
 
   @ApiProperty({
