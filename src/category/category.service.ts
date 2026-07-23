@@ -65,7 +65,7 @@ export class CategoryService {
       .where('category.tenant_id = :tenantId', { tenantId });
 
     if (query.search) {
-      qb.andWhere('category.name ILIKE = :search', {
+      qb.andWhere('category.name ILIKE :search', {
         search: `%${query.search}%`,
       });
     }
