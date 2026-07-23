@@ -17,7 +17,7 @@ export interface TenantRequest extends Request {
 export class TenantMiddleware implements NestMiddleware {
   constructor(private readonly tenantService: TenantService) {}
   async use(req: TenantRequest, _res: Response, next: NextFunction) {
-    const tenantId = req.headers['X-Tenant-Id'];
+    const tenantId = req.headers['x-tenant-id'];
 
     if (!tenantId) {
       throw new BadRequestException('Missing X-Tenant-ID header');
