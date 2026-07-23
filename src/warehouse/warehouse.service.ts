@@ -139,8 +139,11 @@ export class WarehouseService {
     }
   }
 
-  private async assertNameUniqueness(
-    name: string,
+  async remove(tenantId: string, id: string): Promise<void> {
+    const warehouse = await this.findOne(tenantId, id);
+    await this.warehouseRepo.softRemove(warehouse);
+  }
+
   private async assertNameUnique(
     tenantId: string,
     name: string,
