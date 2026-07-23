@@ -106,7 +106,9 @@ export class WarehouseService {
     });
 
     if (!warehouse) {
-      throw new NotFoundException(`There is no warehouse by this ID:${id}`);
+      throw new NotFoundException(
+        `Warehouse with ID "${id}" not found for tenant ${tenantId}`,
+      );
     }
 
     return warehouse;
@@ -124,16 +126,17 @@ export class WarehouseService {
       warehouse.name = dto.name;
     }
 
-    if (dto.location) {
+    if (dto.location !== undefined) {
       warehouse.location = dto.location;
     }
 
     try {
-      await this.warehouseRepo.save(warehouse);
-      return warehouse;
+      return await this.warehouseRepo.save(warehouse);
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new ConflictException('There is a warehouse with this info');
+        throw new ConflictException(
+          'A warehouse with this name already exists for this tenant',
+        );
       }
       throw error;
     }
