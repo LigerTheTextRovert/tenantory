@@ -40,6 +40,7 @@ export class WarehouseService {
     const warehouse = await this.findOne(tenantId, id);
 
     if (dto.name) {
+      await this.assertNameUniqueness(dto.name, tenantId, id);
       warehouse.name = dto.name;
     }
 
@@ -56,5 +57,26 @@ export class WarehouseService {
       }
       throw error;
     }
+  }
+
+  private async assertNameUniqueness(
+    name: string,
+    tenantId: string,
+    id: string,
+  ): Promise<boolean> {
+    const warehouse = await this.warehouseRepo.findOne({
+      where: {
+        id,
+        tenantId,
+        name,
+        deletedAt: IsNull(),
+      },
+    });
+
+    if (!warehouse) {
+      throw new ConflictException('There is already a warehouse by this name');
+    }
+
+    return true;
   }
 }
