@@ -40,7 +40,7 @@ export class WarehouseService {
     const warehouse = await this.findOne(tenantId, id);
 
     if (dto.name) {
-      await this.assertNameUniqueness(dto.name, tenantId, id);
+      await this.assertNameUnique(tenantId, dto.name, id);
       warehouse.name = dto.name;
     }
 
@@ -61,22 +61,26 @@ export class WarehouseService {
 
   private async assertNameUniqueness(
     name: string,
+  private async assertNameUnique(
     tenantId: string,
-    id: string,
-  ): Promise<boolean> {
-    const warehouse = await this.warehouseRepo.findOne({
-      where: {
-        id,
-        tenantId,
-        name,
-        deletedAt: IsNull(),
-      },
-    });
+    name: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const qb = this.warehouseRepo
+      .createQueryBuilder('w')
+      .where('w.tenant_id = :tenantId', { tenantId })
+      .andWhere('w.name = :name', { name })
+      .andWhere('w.deleted_at IS NULL');
 
-    if (!warehouse) {
-      throw new ConflictException('There is already a warehouse by this name');
+    if (excludeId) {
+      qb.andWhere('w.id != :excludeId', { excludeId });
     }
 
-    return true;
+    const exists = await qb.getExists();
+    if (exists) {
+      throw new ConflictException(
+        'A warehouse with this name already exists for this tenant',
+      );
+    }
   }
 }
