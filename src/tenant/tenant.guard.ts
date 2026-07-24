@@ -1,19 +1,26 @@
 import {
+  BadRequestException,
   CanActivate,
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { TenantRequest } from './tenant.middleware';
 import { TenantStatus } from './entities/tenant.entity';
 import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator';
+import { TenantService } from './tenant.service';
+import { TenantRequest } from './tenant.type';
+import { isUUID } from 'class-validator';
 
 @Injectable()
 export class TenantGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly tenantService: TenantService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -24,10 +31,26 @@ export class TenantGuard implements CanActivate {
     }
 
     const req = context.switchToHttp().getRequest<TenantRequest>();
-    const tenant = req['tenant'];
+    const tenantId = req.headers['x-tenant-id'] as string | string[];
+
+    if (!tenantId) {
+      throw new BadRequestException('Missing X-Tenant-ID header');
+    }
+
+    if (Array.isArray(tenantId)) {
+      throw new BadRequestException(
+        'Only single value for X-Tenant-ID id allowed',
+      );
+    }
+
+    const tenant = await this.tenantService.findByIdAndValidate(tenantId);
+
+    if (!isUUID(tenantId)) {
+      throw new BadRequestException('Invalid tenant ID format');
+    }
 
     if (!tenant) {
-      throw new ForbiddenException('No tenant context established');
+      throw new NotFoundException('Tenant not found or is archived');
     }
 
     if (tenant.status !== TenantStatus.ACTIVE) {
