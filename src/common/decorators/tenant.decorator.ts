@@ -1,6 +1,6 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import { Tenant } from '../../tenant/entities/tenant.entity';
-import { TenantRequest } from '../../tenant/tenant.middleware';
+import { TenantRequest } from '../../tenant/tenant.type';
 
 export const TenantDecorator = createParamDecorator(
   (

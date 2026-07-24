@@ -5,7 +5,7 @@ import {
   NestInterceptor,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { TenantRequest } from './tenant.middleware';
+import { TenantRequest } from './tenant.type';
 import { tenantAsyncStorage } from './tenant-context';
 
 @Injectable()
