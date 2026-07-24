@@ -24,7 +24,7 @@ async function bootstrap() {
 
   app.useGlobalGuards(app.get(TenantGuard));
   app.useGlobalInterceptors(app.get(TenantInterceptor));
-  app.useGlobalFilters(app.get(GlobalExceptionFilter));
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   setupSwagger(app);
 
