@@ -1,9 +1,4 @@
-import {
-  Module,
-  NestModule,
-  MiddlewareConsumer,
-  RequestMethod,
-} from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TenantModule } from './tenant/tenant.module';
@@ -16,7 +11,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 // import { dataSourceOption } from './config/db.config';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
-import { TenantMiddleware } from './tenant/tenant.middleware';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 
 @Module({
@@ -56,15 +50,5 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(RequestIdMiddleware).forRoutes('*');
-    consumer
-      .apply(TenantMiddleware)
-      .exclude(
-        { path: 'tenants', method: RequestMethod.GET },
-        { path: 'tenants', method: RequestMethod.POST },
-        { path: 'tenants/:id', method: RequestMethod.GET },
-        { path: 'tenants/:id', method: RequestMethod.PATCH },
-        { path: 'tenants/:id', method: RequestMethod.DELETE },
-      )
-      .forRoutes('*');
   }
 }
