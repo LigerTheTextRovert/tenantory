@@ -30,8 +30,8 @@ AppModule
 ├── CategoryModule ✅ (full CRUD)
 ├── CatalogModule ✅ (Product + Variant CRUD)
 ├── InventoryModule ⚠️ (entity only, no service/controller)
-├── WarehouseModule ⚠️ (entity only, no service/controller)
-├── SupplierModule ⚠️ (entity only, no service/controller)
+├── WarehouseModule ✅ (full CRUD)
+├── SupplierModule ✅ (full CRUD)
 ├── AuthModule ❌ (empty module)
 ├── AdminModule ❌ (empty module)
 └── AuditModule ❌ (empty module)
@@ -74,8 +74,8 @@ Request
 | Product        | `products`         | catalog   | ✅ Complete    |
 | ProductVariant | `product_variants` | catalog   | ✅ Complete    |
 | StockLevel     | `stock_levels`     | inventory | ⚠️ Entity only |
-| Warehouse      | `warehouses`       | warehouse | ⚠️ Entity only |
-| Supplier       | `suppliers`        | supplier  | ⚠️ Entity only |
+| Warehouse      | `warehouses`       | warehouse | ✅ Complete    |
+| Supplier       | `suppliers`        | supplier  | ✅ Complete    |
 
 ### Common Entity Columns (all tenant-scoped tables)
 
@@ -224,15 +224,15 @@ src/
 
 ## 7. Known Bugs & Issues
 
-| Severity    | File                   | Line    | Issue                                                                                                                   |
-| ----------- | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| 🔴 Critical | `tenant.middleware.ts` | 20      | Header check `req.headers['X-Tenant-ID']` — Express lowercases all headers to `x-tenant-id`. This will NEVER match.     |
-| 🔴 Critical | `category.service.ts`  | 68      | SQL syntax: `ILIKE = :search` should be `ILIKE :search` (extra `=` causes runtime error)                                |
-| 🟡 Medium   | `main.ts`              | 27      | `GlobalExceptionFilter` registered via `app.get()` — should use `new GlobalExceptionFilter()` since it's not injectable |
-| 🟡 Medium   | DTOs                   | various | `@Min(1)` used on string fields — should be `@MinLength(1)`. Same for `@Max(255)` → `@MaxLength(255)`                   |
-| 🟡 Medium   | `tsconfig.json`        | —       | `strictNullChecks: false` disables important type safety                                                                |
-| 🟢 Low      | `.env`                 | 2,4     | `NODE_ENV` defined twice                                                                                                |
-| 🟢 Low      | `test/app.e2e-spec.ts` | —       | Tests root endpoint without `/api` prefix                                                                               |
+| Severity    | File                   | Line    | Issue                                                                                                                   | Status |
+| ----------- | ---------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------- | ------ |
+| 🔴 Critical | `tenant.guard.ts`      | 34      | Header check was refactored to `TenantGuard` and case-insensitivity fixed (`x-tenant-id`).                             | ✅ Fixed |
+| 🔴 Critical | `category.service.ts`  | 68      | SQL syntax fixed, but `category.service.spec.ts` needs to be updated to assert on the correct query.                    | ⚠️ Service fixed, tests pending |
+| 🟡 Medium   | `main.ts`              | 27      | `GlobalExceptionFilter` is now instantiated directly (`new GlobalExceptionFilter()`).                                    | ✅ Fixed |
+| 🟡 Medium   | DTOs                   | various | `@Min(1)` used on string fields — should be `@MinLength(1)`. Same for `@Max(255)` → `@MaxLength(255)`.                   | ✅ Fixed |
+| 🟡 Medium   | `tsconfig.json`        | —       | `strictNullChecks: false` disables important type safety.                                                                | ⚠️ Pending |
+| 🟢 Low      | `.env`                 | 2,4     | `NODE_ENV` was defined twice.                                                                                           | ✅ Fixed |
+| 🟢 Low      | `test/app.e2e-spec.ts` | —       | Tests root endpoint without `/api` prefix and expects incorrect hello message.                                           | ⚠️ Pending |
 
 ---
 
@@ -240,15 +240,15 @@ src/
 
 ### Phase 1 — Fix Critical Bugs
 
-- [ ] Fix header case sensitivity in `tenant.middleware.ts`
-- [ ] Fix SQL syntax in `category.service.ts`
-- [ ] Fix `@Min/@Max` → `@MinLength/@MaxLength` in DTOs
+- [x] Fix header case sensitivity in `tenant.middleware.ts` (Refactored to `TenantGuard` using lowercase header)
+- [ ] Fix SQL syntax in `category.service.ts` (Service logic fixed; test spec pending fix)
+- [x] Fix `@Min/@Max` → `@MinLength/@MaxLength` in DTOs
 - [ ] Enable `strictNullChecks` in tsconfig
 
 ### Phase 2 — Complete Stub Modules (Follow Category M4 Pattern)
 
-- [ ] **Warehouse CRUD** — `WarehouseService`, `WarehouseController`, DTOs
-- [ ] **Supplier CRUD** — `SupplierService`, `SupplierController`, DTOs
+- [x] **Warehouse CRUD** — `WarehouseService`, `WarehouseController`, DTOs
+- [x] **Supplier CRUD** — `SupplierService`, `SupplierController`, DTOs
 - [ ] **Inventory Module** — `InventoryService` with optimistic locking, stock deduction, retry loops
 
 ### Phase 3 — Auth & RBAC
