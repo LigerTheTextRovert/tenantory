@@ -12,6 +12,7 @@ import { ConfigModule } from '@nestjs/config';
 // import { dataSourceOption } from './config/db.config';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
+import { StockLevel } from './inventory/entities/stock-level.entity';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
         cache: true,
       }),
     }),
+    TypeOrmModule.forFeature([StockLevel]),
     TenantModule,
     CategoryModule,
     CatalogModule,
