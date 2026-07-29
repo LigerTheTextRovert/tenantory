@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { StockLevel } from './entities/stock-level.entity';
 import { DataSource, Repository } from 'typeorm';
@@ -8,6 +8,11 @@ import {
   PaginationLinks,
   PaginationMeta,
 } from '../common/interfaces/paginated-response.interface';
+import { ReplenishStockDto } from './dto/replenish-stock.dto';
+import { VariantService } from '../catalog/variant/variant.service';
+import { WarehouseService } from '../warehouse/warehouse.service';
+import { Warehouse } from '../warehouse/entities/warehouse.entity';
+import { ProductVariant } from '../catalog/entities/product-variant.entity';
 
 @Injectable()
 export class InventoryService {
@@ -16,6 +21,8 @@ export class InventoryService {
     private dataSource: DataSource,
     @InjectRepository(StockLevel)
     private readonly inventoryRepo: Repository<StockLevel>,
+    private readonly variantService: VariantService,
+    private readonly warehouseService: WarehouseService,
   ) {}
 
   // async deductStock(
@@ -83,6 +90,56 @@ export class InventoryService {
     };
 
     return paginationResult;
+  }
+
+  async findOrCreate(
+    tenantId: string,
+    warehouse: Warehouse,
+    variant: ProductVariant,
+  ): Promise<StockLevel> {
+    const stock = await this.inventoryRepo.findOne({
+      where: {
+        tenantId,
+        warehouse,
+        variant,
+      },
+    });
+
+    if (!stock) {
+      return this.inventoryRepo.create({
+        tenantId,
+        warehouse,
+        variant,
+        availableQuantity: 0,
+        reservedQuantity: 0,
+        safetyThreshold: 20,
+      });
+    }
+
+    return stock;
+  }
+
+  async replenish(
+    tenantId: string,
+    dto: ReplenishStockDto,
+  ): Promise<StockLevel> {
+    // warehouseId and tenantId validation
+    const [warehouse, variant] = await Promise.all([
+      this.warehouseService.findOne(tenantId, dto.warehouseId),
+      this.variantService.findOneById(tenantId, dto.variantId),
+    ]);
+
+    const stock = await this.findOrCreate(
+      tenantId,
+      dto.quantity,
+      warehouse,
+      variant,
+    );
+
+    stock.availableQuantity += dto.quantity;
+
+    await this.inventoryRepo.save(stock);
+    return stock;
   }
 
   private createLink(page: number, limit: number) {
