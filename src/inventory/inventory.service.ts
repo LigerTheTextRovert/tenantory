@@ -129,12 +129,7 @@ export class InventoryService {
       this.variantService.findOneById(tenantId, dto.variantId),
     ]);
 
-    const stock = await this.findOrCreate(
-      tenantId,
-      dto.quantity,
-      warehouse,
-      variant,
-    );
+    const stock = await this.findOrCreate(tenantId, warehouse, variant);
 
     stock.availableQuantity += dto.quantity;
 
