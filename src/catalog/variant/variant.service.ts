@@ -64,6 +64,24 @@ export class VariantService {
     }
   }
 
+  // helper function for variant validation in other services
+  async findOneById(
+    tenantId: string,
+    variantId: string,
+  ): Promise<ProductVariant> {
+    const variant = await this.variantRepo.findOne({
+      where: { id: variantId, tenant: { id: tenantId }, deletedAt: IsNull() },
+    });
+
+    if (!variant) {
+      throw new NotFoundException(
+        `There is no variant with this Id in tenant ${tenantId}`,
+      );
+    }
+
+    return variant;
+  }
+
   async findAll(
     tenantId: string,
     productId: string,
