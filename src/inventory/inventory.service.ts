@@ -7,7 +7,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { StockLevel } from './entities/stock-level.entity';
 import {
   DataSource,
-  IsNull,
+  EntityManager,
   OptimisticLockVersionMismatchError,
   Repository,
 } from 'typeorm';
@@ -25,13 +25,12 @@ import { ProductVariant } from '../catalog/entities/product-variant.entity';
 import { DeductStockDto } from './dto/deduct-stock.dto';
 import { RetryOptions, retryWithBackoff } from '../common/utils/retry.util';
 import { ReleaseStockDto } from './dto/release-stock.dto';
-import { async } from 'rxjs';
 
 @Injectable()
 export class InventoryService {
   constructor(
     @InjectDataSource()
-    private dataSource: DataSource,
+    private readonly dataSource: DataSource,
     @InjectRepository(StockLevel)
     private readonly inventoryRepo: Repository<StockLevel>,
     private readonly variantService: VariantService,
@@ -47,18 +46,22 @@ export class InventoryService {
   };
 
   async deductStock(tenantId: string, dto: DeductStockDto): Promise<void> {
-    return retryWithBackoff(async () => {
-      return this.dataSource.transaction(async (manager) => {
-        const stockLevelRepo = manager.getRepository(StockLevel);
-        // const variantRepo = manager.getRepository(ProductVariant);
+    // Validate variant and warehouse outside of the transaction to keep lock times low
+    const [variant, warehouse] = await Promise.all([
+      this.variantService.findOneById(tenantId, dto.variantId),
+      this.warehouseService.findOne(tenantId, dto.warehouseId),
+    ]);
 
-        const [variant, warehouse] = await Promise.all([
-          this.variantService.findOneById(tenantId, dto.variantId),
-          this.warehouseService.findOne(tenantId, dto.warehouseId),
-        ]);
+    await retryWithBackoff(async () => {
+      await this.dataSource.transaction(async (manager) => {
+        const stockLevelRepo = manager.getRepository(StockLevel);
 
         const stockLevel = await stockLevelRepo.findOne({
-          where: { tenantId, variant, warehouse },
+          where: {
+            tenantId,
+            variant: { id: variant.id },
+            warehouse: { id: warehouse.id },
+          },
         });
 
         if (!stockLevel) {
@@ -71,6 +74,9 @@ export class InventoryService {
 
         stockLevel.availableQuantity -= dto.quantity;
         stockLevel.reservedQuantity += dto.quantity;
+
+        // Persist change back to DB
+        await manager.save(stockLevel);
       });
     }, this.retryOptions);
   }
@@ -81,7 +87,7 @@ export class InventoryService {
   ): Promise<PaginatedResponse<StockLevel>> {
     const qb = this.inventoryRepo
       .createQueryBuilder('q')
-      .where('q.tenant_id = :tenantId', { tenantId });
+      .where('q.tenantId = :tenantId', { tenantId });
 
     if (query.variantId) {
       qb.leftJoinAndSelect('q.variant', 'variant').andWhere(
@@ -98,55 +104,60 @@ export class InventoryService {
     }
 
     const sortColumns: Record<string, string> = {
-      created_at: 'q.created_at',
+      created_at: 'q.createdAt',
     };
 
-    qb.orderBy(sortColumns[query.sortBy], query.sortOrder);
+    const sortField = sortColumns[query.sortBy] || 'q.createdAt';
+    qb.orderBy(sortField, query.sortOrder);
+
+    // Apply pagination
+    const limit = query.limit || 20;
+    const page = query.page || 1;
+    qb.take(limit).skip((page - 1) * limit);
 
     const [data, counts] = await qb.getManyAndCount();
     const meta: PaginationMeta = {
       totalItems: counts,
       itemCount: data.length,
-      totalPages: Math.ceil(counts / query.limit),
-      itemsPerPage: query.limit,
-      currentPage: query.page,
+      totalPages: Math.ceil(counts / limit),
+      itemsPerPage: limit,
+      currentPage: page,
     };
 
     const links: PaginationLinks = {
-      last: this.createLink(meta.totalPages, query.limit),
-      first: this.createLink(1, query.limit),
-      previous:
-        query.page > 1 ? this.createLink(query.page - 1, query.limit) : null,
-      next:
-        query.page < meta.totalPages
-          ? this.createLink(query.page + 1, query.limit)
-          : null,
+      last: this.createLink(meta.totalPages, limit),
+      first: this.createLink(1, limit),
+      previous: page > 1 ? this.createLink(page - 1, limit) : null,
+      next: page < meta.totalPages ? this.createLink(page + 1, limit) : null,
     };
 
-    const paginationResult: PaginatedResponse<StockLevel> = {
+    return {
       data,
       meta,
       links,
     };
-
-    return paginationResult;
   }
 
   async findOrCreate(
     tenantId: string,
     warehouse: Warehouse,
     variant: ProductVariant,
+    manager?: EntityManager,
   ): Promise<StockLevel> {
-    const stock = await this.inventoryRepo.findOne({
+    const repo = manager
+      ? manager.getRepository(StockLevel)
+      : this.inventoryRepo;
+
+    const stock = await repo.findOne({
       where: {
         tenantId,
-        warehouse,
-        variant,
+        warehouse: { id: warehouse.id },
+        variant: { id: variant.id },
       },
     });
 
     if (!stock) {
-      return this.inventoryRepo.create({
+      return repo.create({
         tenantId,
         warehouse,
         variant,
@@ -163,20 +174,25 @@ export class InventoryService {
     tenantId: string,
     dto: ReplenishStockDto,
   ): Promise<StockLevel> {
-    return retryWithBackoff(async () => {
-      return this.dataSource.transaction(async () => {
-        // warehouseId and tenantId validation
-        const [warehouse, variant] = await Promise.all([
-          this.warehouseService.findOne(tenantId, dto.warehouseId),
-          this.variantService.findOneById(tenantId, dto.variantId),
-        ]);
+    // Validate outside transaction
+    const [warehouse, variant] = await Promise.all([
+      this.warehouseService.findOne(tenantId, dto.warehouseId),
+      this.variantService.findOneById(tenantId, dto.variantId),
+    ]);
 
-        const stock = await this.findOrCreate(tenantId, warehouse, variant);
+    return retryWithBackoff(async () => {
+      return this.dataSource.transaction(async (manager) => {
+        const stock = await this.findOrCreate(
+          tenantId,
+          warehouse,
+          variant,
+          manager,
+        );
 
         stock.availableQuantity += dto.quantity;
 
-        await this.inventoryRepo.save(stock);
-        return stock;
+        // Use manager.save to execute within the active transaction
+        return manager.save(stock);
       });
     }, this.retryOptions);
   }
@@ -211,6 +227,6 @@ export class InventoryService {
   }
 
   private createLink(page: number, limit: number) {
-    return `app/v1/invetory?page=${page}&limit=${limit}`;
+    return `app/v1/inventory?page=${page}&limit=${limit}`;
   }
 }
