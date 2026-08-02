@@ -74,7 +74,6 @@ export class InventoryService {
         }
 
         stockLevel.availableQuantity -= dto.quantity;
-        stockLevel.reservedQuantity += dto.quantity;
 
         // Persist change back to DB
         await manager.save(stockLevel);
