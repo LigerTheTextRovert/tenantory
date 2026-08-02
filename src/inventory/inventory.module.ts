@@ -14,6 +14,6 @@ import { CatalogModule } from '../catalog/catalog.module';
   ],
   providers: [InventoryService],
   controllers: [InventoryController],
-  exports: [TypeOrmModule],
+  exports: [InventoryService, TypeOrmModule],
 })
 export class InventoryModule {}
