@@ -219,7 +219,7 @@ describe('CategoryService', () => {
       await service.findAll(TENANT_ID, query);
 
       expect(qb.andWhere).toHaveBeenCalledWith(
-        'category.name ILIKE = :search',
+        'category.name ILIKE :search',
         { search: '%elec%' },
       );
     });
