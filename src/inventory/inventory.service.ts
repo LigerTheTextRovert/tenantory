@@ -25,6 +25,7 @@ import { ProductVariant } from '../catalog/entities/product-variant.entity';
 import { DeductStockDto } from './dto/deduct-stock.dto';
 import { RetryOptions, retryWithBackoff } from '../common/utils/retry.util';
 import { ReleaseStockDto } from './dto/release-stock.dto';
+import { ReserveStockDto } from './dto/reserve-stock.dto';
 
 @Injectable()
 export class InventoryService {
@@ -193,6 +194,34 @@ export class InventoryService {
 
         // Use manager.save to execute within the active transaction
         return manager.save(stock);
+      });
+    }, this.retryOptions);
+  }
+
+  async reserveStock(tenantId: string, dto: ReserveStockDto): Promise<void> {
+    return retryWithBackoff(async () => {
+      return this.dataSource.transaction(async (manager) => {
+        const stockLevel = await manager.findOne(StockLevel, {
+          where: {
+            tenantId,
+            variant: { id: dto.variantId },
+            warehouse: { id: dto.warehouseId },
+          },
+        });
+
+        if (!stockLevel) {
+          throw new NotFoundException('There is no stock level with this info');
+        }
+
+        if (stockLevel.availableQuantity < dto.quantity) {
+          throw new BadRequestException(
+            'Insufficient stock available for reservation',
+          );
+        }
+
+        stockLevel.availableQuantity -= dto.quantity;
+        stockLevel.reservedQuantity += dto.quantity;
+        await manager.save(stockLevel);
       });
     }, this.retryOptions);
   }
