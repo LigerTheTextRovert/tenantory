@@ -37,23 +37,23 @@ export class UserResponseDto {
     description: 'Tenant ID the user belongs to',
     example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  tenant_id: string;
+  tenantId: string;
 
   @ApiProperty({
     description: 'Account active status',
     example: true,
   })
-  is_active: boolean;
+  isActive: boolean;
 
   @ApiProperty({
     description: 'Account creation timestamp',
     example: '2024-01-15T10:30:00Z',
   })
-  created_at: Date;
+  createdAt: Date;
 
   @ApiProperty({
     description: 'Account last update timestamp',
     example: '2024-01-15T10:30:00Z',
   })
-  updated_at: Date;
+  updatedAt: Date;
 }
