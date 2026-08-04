@@ -11,7 +11,7 @@ import { UserRole } from '../enum/user-role.enum';
 import { Request } from 'express';
 import { User } from '../entities/user.entity';
 
-interface RequestWithUser extends Request {
+export interface RequestWithUser extends Request {
   user: User;
 }
 
