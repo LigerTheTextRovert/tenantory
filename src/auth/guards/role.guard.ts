@@ -2,12 +2,20 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
+  Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/auth.decorator';
 import { UserRole } from '../enum/user-role.enum';
+import { Request } from 'express';
+import { User } from '../entities/user.entity';
 
+interface RequestWithUser extends Request {
+  user: User;
+}
+
+@Injectable()
 export class RoleGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
   canActivate(context: ExecutionContext): boolean {
@@ -20,12 +28,11 @@ export class RoleGuard implements CanActivate {
       return true;
     }
 
-    // TODO: we need to use a proper type for the request that contains user info, we need JwtGuard
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
     const user = request.user;
 
     if (!user) {
-      throw new ForbiddenException('User not authenticated');
+      throw new UnauthorizedException('User not authenticated');
     }
 
     if (user.role === UserRole.SUPER_ADMIN) {
