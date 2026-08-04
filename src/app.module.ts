@@ -13,6 +13,7 @@ import { ConfigModule } from '@nestjs/config';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { StockLevel } from './inventory/entities/stock-level.entity';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { StockLevel } from './inventory/entities/stock-level.entity';
     InventoryModule,
     WarehouseModule,
     SupplierModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
