@@ -26,11 +26,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     // Attach user to request
-    return {
-      id: payload.sub,
-      email: payload.email,
-      role: payload.role,
-      tenant_id: payload.tenantId,
-    };
+    return user;
   }
 }
