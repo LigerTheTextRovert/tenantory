@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Injectable,
-  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -16,12 +15,14 @@ import { UserResponseDto } from './dto/user-response.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -135,11 +136,11 @@ export class AuthService {
 
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
-        secret: process.env.JWT_ACCESS_SECRET,
+        secret: this.configService.get('JWT_ACCESS_SECRET'),
         expiresIn: '15m',
       }),
       this.jwtService.signAsync(payload, {
-        secret: process.env.JWT_REFRESH_SECRET,
+        secret: this.configService.get('JWT_REFRESH_SECRET'),
         expiresIn: '15m',
       }),
     ]);
@@ -155,7 +156,7 @@ export class AuthService {
     const payload = await this.jwtService.verifyAsync<JwtPayload>(
       refreshToken,
       {
-        secret: process.env.JWT_REFRESH_SECRET,
+        secret: this.configService.get('JWT_REFRESH_SECRET'),
       },
     );
 
