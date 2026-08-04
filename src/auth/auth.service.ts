@@ -1,13 +1,14 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './dto/register.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 
 import * as bcrypt from 'bcryptjs';
 import { UserRole } from './enum/user-role.enum';
@@ -107,6 +108,22 @@ export class AuthService {
 
     if (!user) {
       return null;
+    }
+
+    return user;
+  }
+
+  async showUserInfo(tenantId: string, id: string) {
+    const user = await this.userRepo.findOne({
+      where: {
+        id,
+        tenantId,
+        deletedAt: IsNull(),
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('There is no user with this id');
     }
 
     return user;
