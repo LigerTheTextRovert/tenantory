@@ -1,4 +1,9 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import {
+  Module,
+  NestModule,
+  MiddlewareConsumer,
+  RequestMethod,
+} from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TenantModule } from './tenant/tenant.module';
@@ -11,6 +16,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 // import { dataSourceOption } from './config/db.config';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
+import { TenantMiddleware } from './tenant/tenant.middleware';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { StockLevel } from './inventory/entities/stock-level.entity';
 import { AuthModule } from './auth/auth.module';
@@ -54,5 +60,15 @@ import { AuthModule } from './auth/auth.module';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(RequestIdMiddleware).forRoutes('*');
+
+    // In your app.module.ts or where you configure the middleware
+    consumer
+      .apply(TenantMiddleware)
+      .exclude(
+        { path: 'v1/tenants', method: RequestMethod.ALL },
+        { path: 'v1/tenants/(.*)', method: RequestMethod.ALL },
+        // { path: 'auth/(.*)', method: RequestMethod.ALL },
+      )
+      .forRoutes('*');
   }
 }
