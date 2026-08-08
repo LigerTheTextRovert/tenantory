@@ -2,7 +2,7 @@ services:
   postgres:
     image: postgres:17
     container_name: tenantory-postgres
-    restart: unless-stopped
+    restart: no 
 
     environment:
       POSTGRES_USER: ${DB_USERNAME}
@@ -25,7 +25,7 @@ services:
   pgadmin:
     image: dpage/pgadmin4
     container_name: tenantory-pgadmin
-    restart: unless-stopped
+    restart: no 
 
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PG_EMAIL}
