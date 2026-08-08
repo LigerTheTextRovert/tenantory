@@ -5,6 +5,7 @@ import { InventoryService } from './inventory.service';
 import { InventoryController } from './inventory.controller';
 import { WarehouseModule } from '../warehouse/warehouse.module';
 import { CatalogModule } from '../catalog/catalog.module';
+import { WarehouseService } from '../warehouse/warehouse.service';
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { CatalogModule } from '../catalog/catalog.module';
     WarehouseModule,
     CatalogModule,
   ],
-  providers: [InventoryService],
+  providers: [InventoryService, WarehouseService],
   controllers: [InventoryController],
   exports: [InventoryService, TypeOrmModule],
 })
