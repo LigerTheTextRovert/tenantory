@@ -20,12 +20,25 @@ import { TenantMiddleware } from './tenant/tenant.middleware';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { StockLevel } from './inventory/entities/stock-level.entity';
 import { AuthModule } from './auth/auth.module';
+import { AwsSdkModule } from 'aws-sdk-v3-nest';
+import { S3Client } from '@aws-sdk/client-s3';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       envFilePath: '.env',
       isGlobal: true,
+    }),
+    AwsSdkModule.register({
+      client: new S3Client({
+        region: 'us-east-1',
+        endpoint: 'http://localhost:9000',
+        credentials: {
+          accessKeyId: process.env.MINIO_ROOT_USER,
+          secretAccessKey: process.env.MINIO_ROOT_PASSWORD,
+        },
+        forcePathStyle: true,
+      }),
     }),
     TypeOrmModule.forRootAsync({
       useFactory: () => ({
