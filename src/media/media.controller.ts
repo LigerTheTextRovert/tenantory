@@ -30,8 +30,14 @@ export class MediaController {
   @Get(':key')
   @ApiOperation({ summary: 'Get a signed URL for a media asset' })
   @ApiParam({ name: 'key', description: 'The unique key of the media asset' })
-  @ApiResponse({ status: 200, description: 'Signed URL generated successfully' })
-  @ApiResponse({ status: 404, description: 'Media asset not found or access denied' })
+  @ApiResponse({
+    status: 200,
+    description: 'Signed URL generated successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Media asset not found or access denied',
+  })
   async getAsset(
     @TenantDecorator() tenantId: string,
     @Param('key') key: string,
@@ -72,7 +78,9 @@ export class MediaController {
   }
 
   @Post('presigned-url')
-  @ApiOperation({ summary: 'Generate a presigned URL for direct client S3 upload' })
+  @ApiOperation({
+    summary: 'Generate a presigned URL for direct client S3 upload',
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -83,7 +91,10 @@ export class MediaController {
       required: ['fileName', 'contentType'],
     },
   })
-  @ApiResponse({ status: 201, description: 'Presigned URL and key generated successfully' })
+  @ApiResponse({
+    status: 201,
+    description: 'Presigned URL and key generated successfully',
+  })
   async generatePresignedUrl(
     @TenantDecorator() tenantId: string,
     @Body('fileName') fileName: string,
