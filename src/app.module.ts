@@ -31,6 +31,7 @@ import { MediaModule } from './media/media.module';
       isGlobal: true,
     }),
     AwsSdkModule.register({
+      isGlobal: true,
       client: new S3Client({
         region: 'us-east-1',
         endpoint: 'http://localhost:9000',
