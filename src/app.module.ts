@@ -22,6 +22,7 @@ import { StockLevel } from './inventory/entities/stock-level.entity';
 import { AuthModule } from './auth/auth.module';
 import { AwsSdkModule } from 'aws-sdk-v3-nest';
 import { S3Client } from '@aws-sdk/client-s3';
+import { MediaModule } from './media/media.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { S3Client } from '@aws-sdk/client-s3';
     WarehouseModule,
     SupplierModule,
     AuthModule,
+    MediaModule,
   ],
   controllers: [AppController],
   providers: [AppService],
