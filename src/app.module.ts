@@ -23,6 +23,7 @@ import { AuthModule } from './auth/auth.module';
 import { AwsSdkModule } from 'aws-sdk-v3-nest';
 import { S3Client } from '@aws-sdk/client-s3';
 import { MediaModule } from './media/media.module';
+import { AppLoggerModule } from './logger/app-logger.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { MediaModule } from './media/media.module';
     SupplierModule,
     AuthModule,
     MediaModule,
+    AppLoggerModule,
   ],
   controllers: [AppController],
   providers: [AppService],
