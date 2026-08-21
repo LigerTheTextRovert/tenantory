@@ -3,7 +3,12 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth.service';
 import { JwtPayload } from '../interfaces/jwt-payload.interface';
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { TenantRequest } from '../../tenant/tenant.type';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -15,10 +20,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: configService.get('JWT_ACCESS_SECRET'),
+      passReqToCallback: true,
     });
   }
 
-  async validate(payload: JwtPayload) {
+  async validate(req: TenantRequest, payload: JwtPayload) {
+    if (req.tenantId && payload.tenantId !== req.tenantId) {
+      throw new ForbiddenException(
+        'Token does not belong to the specified tenant',
+      );
+    }
+
     const user = await this.authService.validateJwtPayload(payload);
 
     if (!user) {
