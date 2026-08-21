@@ -3,6 +3,9 @@ import { LoggerModule } from 'nestjs-pino';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 
+import { stdSerializers } from 'pino';
+import { randomUUID } from 'node:crypto';
+
 @Module({
   imports: [
     LoggerModule.forRootAsync({
@@ -24,16 +27,25 @@ import { Request, Response } from 'express';
               : undefined,
             // Never log sensitive headers into your storage
             redact: ['req.headers.authorization', 'req.headers.cookie'],
+            // Use our custom requestId instead of auto-generated ones
+            genReqId: (req: Request) => {
+              const incoming = req.headers['x-request-id'];
+              return typeof incoming === 'string' && incoming.length > 0
+                ? incoming
+                : randomUUID();
+            },
             // Control exactly which request/response fields are logged
             serializers: {
-              req: (req: Request) => ({
-                method: req.method,
-                url: req.url,
-                requestId: req.id,
-              }),
-              res: (res: Response) => ({
-                statusCode: res.statusCode,
-              }),
+              req: (req: Request) => {
+                const standardReq = stdSerializers.req(req);
+                return {
+                  ...standardReq,
+                  requestId:
+                    req.id ||
+                    (req as Request & { requestId?: string }).requestId,
+                };
+              },
+              res: (res: Response) => stdSerializers.res(res),
             },
           },
         };

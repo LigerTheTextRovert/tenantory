@@ -5,9 +5,11 @@ import { TenantGuard } from './tenant/tenant.guard';
 import { TenantInterceptor } from './tenant/tenant.interceptor';
 import { setupSwagger } from './config/swagger.config';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { Logger } from 'nestjs-pino';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
 
   app.setGlobalPrefix('api');
   app.useGlobalPipes(

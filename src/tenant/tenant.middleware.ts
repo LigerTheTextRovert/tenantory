@@ -27,11 +27,11 @@ export class TenantMiddleware implements NestMiddleware {
       );
     }
 
-    const tenant = await this.tenantService.findByIdAndValidate(tenantId);
-
     if (!isUUID(tenantId)) {
       throw new BadRequestException('Invalid tenant ID format');
     }
+
+    const tenant = await this.tenantService.findByIdAndValidate(tenantId);
 
     if (!tenant) {
       throw new NotFoundException('Tenant not found or is archived');
