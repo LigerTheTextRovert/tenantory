@@ -7,6 +7,12 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RoleGuard } from '../../auth/guards/role.guard';
 import { Roles } from '../../auth/decorators/auth.decorator';
@@ -18,6 +24,8 @@ import { UpdateSettingsDto } from '../dto/update-settings.dto';
 import { InviteUserDto } from '../dto/invite-user.dto';
 import { UpdateUserRoleDto } from '../dto/update-user-role.dto';
 
+@ApiTags('Tenant Admin')
+@ApiBearerAuth()
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RoleGuard)
 @Roles(UserRole.TENANT_ADMIN)
@@ -28,11 +36,19 @@ export class TenantAdminController {
   ) {}
 
   @Get('settings')
+  @ApiOperation({ summary: 'Get current tenant settings' })
+  @ApiResponse({ status: 200, description: 'Return tenant settings' })
+  @ApiResponse({ status: 404, description: 'Settings not found' })
   async getSettings(@TenantDecorator('id') tenantId: string) {
     return this.tenantSettingService.getSettings(tenantId);
   }
 
   @Patch('settings')
+  @ApiOperation({ summary: 'Update tenant settings' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tenant settings updated successfully',
+  })
   async updateSettings(
     @TenantDecorator('id') tenantId: string,
     @Body() updateSettingsDto: UpdateSettingsDto,
@@ -44,6 +60,10 @@ export class TenantAdminController {
   }
 
   @Post('users/invite')
+  @ApiOperation({ summary: 'Invite a new user to the tenant' })
+  @ApiResponse({ status: 201, description: 'User invited successfully' })
+  @ApiResponse({ status: 400, description: 'Bad Request' })
+  @ApiResponse({ status: 409, description: 'Conflict' })
   async inviteUser(
     @TenantDecorator('id') tenantId: string,
     @Body() inviteUserDto: InviteUserDto,
@@ -59,6 +79,10 @@ export class TenantAdminController {
   }
 
   @Patch('users/:userId/role')
+  @ApiOperation({ summary: 'Update a user role' })
+  @ApiResponse({ status: 200, description: 'User role updated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad Request' })
+  @ApiResponse({ status: 404, description: 'User not found' })
   async updateUserRole(
     @TenantDecorator('id') tenantId: string,
     @Param('userId') userId: string,
