@@ -24,6 +24,7 @@ import { AwsSdkModule } from 'aws-sdk-v3-nest';
 import { S3Client } from '@aws-sdk/client-s3';
 import { MediaModule } from './media/media.module';
 import { AppLoggerModule } from './logger/app-logger.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { AppLoggerModule } from './logger/app-logger.module';
     SupplierModule,
     AuthModule,
     MediaModule,
+    AdminModule,
     AppLoggerModule,
   ],
   controllers: [AppController],
