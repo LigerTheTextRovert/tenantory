@@ -52,7 +52,9 @@ export class SupplierService {
     tenantId: string,
     query: SupplierQueryDto,
   ): Promise<PaginatedResponse<Supplier>> {
-    const skip = (query.page - 1) * query.limit;
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
 
     const qb = this.supplierRepo
       .createQueryBuilder('s')
@@ -72,30 +74,30 @@ export class SupplierService {
       updated_at: 's.updated_at',
     };
 
-    qb.orderBy(sortColumns[query.sortBy], query.sortOrder);
+    qb.orderBy(sortColumns[query.sortBy as string], query.sortOrder);
 
     const [data, totalItems] = await qb
       .skip(skip)
       .take(query.limit)
       .getManyAndCount();
 
-    const totalPages = Math.ceil(totalItems / query.limit) || 1;
+    const totalPages = Math.ceil(totalItems / limit) || 1;
 
     const buildLink = (page: number): string =>
-      `/api/v1/suppliers?page=${page}&limit=${query.limit}`;
+      `/api/v1/suppliers?page=${page}&limit=${limit}`;
 
     const meta: PaginationMeta = {
       totalItems,
       itemCount: data.length,
-      itemsPerPage: query.limit,
+      itemsPerPage: limit,
       totalPages,
-      currentPage: query.page,
+      currentPage: page,
     };
 
     const links: PaginationLinks = {
       first: buildLink(1),
-      previous: query.page > 1 ? buildLink(query.page - 1) : null,
-      next: query.page < totalPages ? buildLink(query.page + 1) : null,
+      previous: page > 1 ? buildLink(page - 1) : null,
+      next: page < totalPages ? buildLink(page + 1) : null,
       last: buildLink(totalPages),
     };
 

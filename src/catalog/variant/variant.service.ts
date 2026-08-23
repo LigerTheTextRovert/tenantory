@@ -101,8 +101,9 @@ export class VariantService {
       );
     }
 
-    const { page, limit, search, minPrice, maxPrice, sortBy, sortOrder } =
-      query;
+    const { search, minPrice, maxPrice, sortBy, sortOrder } = query;
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
     const skip = (page - 1) * limit;
 
     const qb = this.variantRepo
@@ -130,7 +131,7 @@ export class VariantService {
       updated_at: 'v.updated_at',
     };
 
-    qb.orderBy(sortColumns[sortBy], sortOrder);
+    qb.orderBy(sortColumns[sortBy as string], sortOrder);
 
     const [data, totalItems] = await qb
       .skip(skip)

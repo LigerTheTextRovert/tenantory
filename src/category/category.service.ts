@@ -27,20 +27,24 @@ export class CategoryService {
 
   async create(tenantId: string, dto: CreateCategoryDto): Promise<Category> {
     const slug = dto.slug ? generateSlug(dto.slug) : generateSlug(dto.name);
-    let parent: Category | null;
-
     await this.assertSlugUnique(tenantId, slug);
 
+    let parent: Category | undefined;
     if (dto.parentId) {
       parent = await this.assertParentExists(tenantId, dto.parentId);
     }
 
-    const category = this.categoryRepo.create({
+    const categoryData: Partial<Category> = {
       name: dto.name,
       slug: slug,
       tenant: { id: tenantId } as Tenant,
-      parent: parent ?? undefined,
-    });
+    };
+
+    if (parent) {
+      categoryData.parent = parent;
+    }
+
+    const category = this.categoryRepo.create(categoryData);
 
     try {
       await this.categoryRepo.save(category);
@@ -59,7 +63,10 @@ export class CategoryService {
     tenantId: string,
     query: CategoryQueryDto,
   ): Promise<PaginatedResponse<Category>> {
-    const skip = (query.page - 1) * query.limit;
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
+
     const qb = this.categoryRepo
       .createQueryBuilder('category')
       .where('category.tenant_id = :tenantId', { tenantId });
@@ -70,8 +77,8 @@ export class CategoryService {
       });
     }
 
-    if (query.parentId) {
-      if (query.parentId === null || query.parentId === '') {
+    if (query.parentId !== undefined && query.parentId !== null) {
+      if (query.parentId === '') {
         qb.andWhere('category.deleted_at IS NULL');
       } else {
         qb.andWhere('category.parent_id = :parentId', {
@@ -84,40 +91,34 @@ export class CategoryService {
       qb.leftJoinAndSelect('category.children', 'children');
     }
 
-    // We already handled the default value in category query dto
-    qb.orderBy(`category.${query.sortBy}`, query.sortOrder);
+    const sortBy = query.sortBy ?? 'name';
+    const sortOrder = query.sortOrder ?? 'ASC';
+    qb.orderBy(`category.${sortBy}`, sortOrder);
 
-    const [data, counts] = await qb
-      .skip(skip)
-      .limit(query.limit)
-      .getManyAndCount();
+    const [data, counts] = await qb.skip(skip).limit(limit).getManyAndCount();
+
+    const totalPages = Math.ceil(counts / limit);
 
     const meta: PaginationMeta = {
       totalItems: counts,
       itemCount: data.length,
-      totalPages: Math.ceil(counts / query.limit),
-      itemsPerPage: query.limit,
-      currentPage: query.page,
+      totalPages: totalPages,
+      itemsPerPage: limit,
+      currentPage: page,
     };
 
     const links: PaginationLinks = {
-      last: this.createLink(meta.totalPages, query.limit),
-      first: this.createLink(1, query.limit),
-      previous:
-        query.page > 1 ? this.createLink(query.page - 1, query.limit) : null,
-      next:
-        query.page < meta.totalPages
-          ? this.createLink(query.page + 1, query.limit)
-          : null,
+      last: this.createLink(totalPages, limit),
+      first: this.createLink(1, limit),
+      previous: page > 1 ? this.createLink(page - 1, limit) : null,
+      next: page < totalPages ? this.createLink(page + 1, limit) : null,
     };
 
-    const paginationResult: PaginatedResponse<Category> = {
+    return {
       data,
       meta,
       links,
     };
-
-    return paginationResult;
   }
 
   async findTree(tenantId: string): Promise<Category[]> {
@@ -129,7 +130,7 @@ export class CategoryService {
       order: { name: 'ASC' },
     });
 
-    if (!result) {
+    if (result.length === 0) {
       throw new NotFoundException(
         `There is no category for tenant ${tenantId}`,
       );
@@ -180,10 +181,13 @@ export class CategoryService {
       if (dto.parentId === id) {
         throw new ConflictException('A category cannot be its own parent');
       }
+
       if (dto.parentId) {
-        await this.assertParentExists(tenantId, dto.parentId);
+        const parent = await this.assertParentExists(tenantId, dto.parentId);
+        target.parent = parent;
+      } else {
+        target.parent = null;
       }
-      target.parent = dto.parentId ? ({ id: dto.parentId } as Category) : null;
     }
 
     try {
@@ -229,10 +233,10 @@ export class CategoryService {
       qb.andWhere('category.id != :excludeId', { excludeId });
     }
 
-    const exist = await qb.getExists();
-    if (exist) {
+    const exists = await qb.getExists();
+    if (exists) {
       throw new ConflictException(
-        'the provided slug must be unique per-tenant',
+        'The provided slug must be unique per-tenant',
       );
     }
   }
@@ -240,8 +244,8 @@ export class CategoryService {
   private async assertParentExists(
     tenantId: string,
     parentId: string,
-  ): Promise<Category | null> {
-    const exist = await this.categoryRepo.findOne({
+  ): Promise<Category> {
+    const parent = await this.categoryRepo.findOne({
       where: {
         id: parentId,
         tenant: { id: tenantId },
@@ -249,29 +253,36 @@ export class CategoryService {
       },
     });
 
-    if (!exist) {
+    if (!parent) {
       throw new NotFoundException(
         `Parent category with ID "${parentId}" not found`,
       );
     }
 
-    return exist;
+    return parent; // Return the actual entity, not nullable
   }
 
   private buildTree(categories: Category[]): Category[] {
-    const map = new Map<string, Category>();
+    const map = new Map<string, Category & { children: Category[] }>();
 
-    categories.forEach((category) =>
-      map.set(category.id, { ...category, children: [] }),
-    );
+    for (const category of categories) {
+      map.set(category.id, {
+        ...category,
+        children: [],
+      });
+    }
 
     const roots: Category[] = [];
 
     for (const category of categories) {
       const node = map.get(category.id);
+      if (!node) continue;
 
       if (category.parent?.id) {
-        map.get(category.parent.id)?.children.push(node);
+        const parentNode = map.get(category.parent.id);
+        if (parentNode) {
+          parentNode.children.push(node);
+        }
       } else {
         roots.push(node);
       }

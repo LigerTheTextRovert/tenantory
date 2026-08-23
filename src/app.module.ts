@@ -38,8 +38,9 @@ import { AdminModule } from './admin/admin.module';
         region: 'us-east-1',
         endpoint: 'http://localhost:9000',
         credentials: {
-          accessKeyId: process.env.MINIO_ROOT_USER,
-          secretAccessKey: process.env.MINIO_ROOT_PASSWORD,
+          accessKeyId: process.env.MINIO_ROOT_USER || 'tenantory_minio_user',
+          secretAccessKey:
+            process.env.MINIO_ROOT_PASSWORD || 'tenantory_minio_pass',
         },
         forcePathStyle: true,
       }),

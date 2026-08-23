@@ -103,12 +103,7 @@ export class InventoryService {
       );
     }
 
-    const sortColumns: Record<string, string> = {
-      created_at: 'q.createdAt',
-    };
-
-    const sortField = sortColumns[query.sortBy] || 'q.createdAt';
-    qb.orderBy(sortField, query.sortOrder);
+    qb.orderBy(query.sortBy as string, query.sortOrder);
 
     // Apply pagination
     const limit = query.limit || 20;

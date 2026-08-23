@@ -18,7 +18,7 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class MediaService {
-  bucketName: string;
+  bucketName: string | undefined;
 
   constructor(
     @InjectRepository(MediaAsset)
@@ -46,10 +46,10 @@ export class MediaService {
       // 1. Upload to S3 first
       await this.s3client.send(command);
     } catch (error: unknown) {
-      throw new InternalServerErrorException(
-        'Failed to upload file to S3, error:',
-        error,
-      );
+      throw new InternalServerErrorException({
+        message: 'Failed to upload file to S3',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
     }
 
     // 2. ONLY save to DB if S3 upload succeeds
