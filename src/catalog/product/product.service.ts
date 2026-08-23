@@ -53,8 +53,9 @@ export class ProductService {
     tenantId: string,
     query: ProductQueryDto,
   ): Promise<PaginatedResponse<Product>> {
-    const { page, limit, categoryId, search, isActive, sortBy, sortOrder } =
-      query;
+    const { categoryId, search, isActive, sortBy, sortOrder } = query;
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
     const skip = (page - 1) * limit;
 
     const qb = this.productRepo
@@ -82,7 +83,7 @@ export class ProductService {
       updated_at: 'p.updated_at',
     };
 
-    qb.orderBy(sortColumns[sortBy], sortOrder);
+    qb.orderBy(sortColumns[sortBy as string], sortOrder);
 
     const [data, totalItems] = await qb
       .skip(skip)
