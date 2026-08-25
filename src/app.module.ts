@@ -25,6 +25,7 @@ import { S3Client } from '@aws-sdk/client-s3';
 import { MediaModule } from './media/media.module';
 import { AppLoggerModule } from './logger/app-logger.module';
 import { AdminModule } from './admin/admin.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AdminModule } from './admin/admin.module';
       envFilePath: '.env',
       isGlobal: true,
     }),
+    RedisModule,
     AwsSdkModule.register({
       isGlobal: true,
       client: new S3Client({
