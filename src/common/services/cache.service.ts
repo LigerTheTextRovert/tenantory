@@ -20,8 +20,6 @@ export class CacheService {
       await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
     } catch (error) {
       this.logger.error(`Failed to set cache key: ${key}`, error);
-
-      throw new InternalServerErrorException('Cache operation failed');
     }
   }
 
@@ -36,8 +34,7 @@ export class CacheService {
       return JSON.parse(item) as T;
     } catch (error) {
       this.logger.error(`Failed to get cache key: ${key}`, error);
-
-      throw new InternalServerErrorException('Cache operation failed');
+      return null;
     }
   }
 
@@ -52,8 +49,7 @@ export class CacheService {
       return ttl;
     } catch (error) {
       this.logger.error(`Failed to get TTL for cache key: ${key}`, error);
-
-      throw new InternalServerErrorException('Cache operation failed');
+      return null;
     }
   }
 
@@ -62,8 +58,6 @@ export class CacheService {
       await this.redis.del(key);
     } catch (error) {
       this.logger.error(`Failed to delete cache key: ${key}`, error);
-
-      throw new InternalServerErrorException('Cache operation failed');
     }
   }
 }
