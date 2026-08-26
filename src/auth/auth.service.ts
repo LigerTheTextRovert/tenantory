@@ -17,6 +17,8 @@ import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ConfigService } from '@nestjs/config';
+import { CacheService } from '../common/services/cache.service';
+import { CACHE_TTL, CacheKeys } from '../common/constants/cache.constants';
 
 @Injectable()
 export class AuthService {
@@ -25,6 +27,7 @@ export class AuthService {
     private readonly userRepo: Repository<User>,
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
+    private readonly cache: CacheService,
   ) {}
 
   async register(tenantId: string, dto: RegisterDto) {
@@ -114,6 +117,12 @@ export class AuthService {
   }
 
   async showUserInfo(tenantId: string, id: string) {
+    const cacheKey = CacheKeys.user(tenantId, id);
+    const cached = await this.cache.get<User>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const user = await this.userRepo.findOne({
       where: {
         id,
@@ -125,6 +134,8 @@ export class AuthService {
     if (!user) {
       throw new NotFoundException('There is no user with this id');
     }
+
+    await this.cache.set(cacheKey, user, CACHE_TTL.USER);
 
     return user;
   }

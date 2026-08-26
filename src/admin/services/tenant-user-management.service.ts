@@ -13,12 +13,15 @@ import { UpdateUserRoleDto } from '../dto/update-user-role.dto';
 import * as bcrypt from 'bcryptjs';
 import { isUniqueViolation } from '../../common/utils/assert-unique.util';
 import { UserRole } from '../../auth/enum/user-role.enum';
+import { CacheService } from '../../common/services/cache.service';
+import { CacheKeys } from '../../common/constants/cache.constants';
 
 @Injectable()
 export class TenantUserManagementService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
+    private readonly cache: CacheService,
   ) {}
 
   async inviteUser(tenantId: string, dto: InviteUserDto): Promise<User> {
@@ -85,7 +88,9 @@ export class TenantUserManagementService {
     user.role = dto.role;
 
     try {
-      return await this.userRepo.save(user);
+      const saved = await this.userRepo.save(user);
+      await this.cache.del(CacheKeys.user(tenantId, userId));
+      return saved;
     } catch {
       throw new InternalServerErrorException('Failed to update user role');
     }
