@@ -42,7 +42,7 @@ export class Product {
   name: string;
 
   @Column({ type: 'text', nullable: true })
-  description?: string;
+  description?: string | null;
 
   @Index('idx_products_sku_prefix')
   @Column({ name: 'sku_prefix', length: 10 })
