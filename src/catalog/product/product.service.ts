@@ -13,6 +13,8 @@ import { isUniqueViolation } from '../../common/utils/assert-unique.util';
 import { ProductQueryDto } from './dto/product-query.dto';
 import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
 import { ProductVariant } from '../entities/product-variant.entity';
+import { CacheService } from '../../common/services/cache.service';
+import { CACHE_TTL, CacheKeys } from '../../common/constants/cache.constants';
 
 @Injectable()
 export class ProductService {
@@ -20,6 +22,7 @@ export class ProductService {
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
     private readonly categoryService: CategoryService,
+    private readonly cache: CacheService,
   ) {}
 
   async create(tenantId: string, dto: CreateProductDto): Promise<Product> {
@@ -38,6 +41,7 @@ export class ProductService {
 
     try {
       const result = await this.productRepo.save(newProduct);
+      await this.cache.delByPattern(CacheKeys.productsPattern(tenantId));
       return result;
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -53,6 +57,12 @@ export class ProductService {
     tenantId: string,
     query: ProductQueryDto,
   ): Promise<PaginatedResponse<Product>> {
+    const cacheKey = CacheKeys.productsList(tenantId, query);
+    const cached = await this.cache.get<PaginatedResponse<Product>>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const { categoryId, search, isActive, sortBy, sortOrder } = query;
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
@@ -97,7 +107,7 @@ export class ProductService {
     const buildLink = (targetPage: number): string =>
       `/api/v1/products?page=${targetPage}&limit=${limit}`;
 
-    return {
+    const response: PaginatedResponse<Product> = {
       data,
       meta: {
         totalItems,
@@ -113,9 +123,19 @@ export class ProductService {
         last: buildLink(totalPages),
       },
     };
+
+    await this.cache.set(cacheKey, response, CACHE_TTL.PRODUCT);
+
+    return response;
   }
 
   async findOne(tenantId: string, id: string): Promise<Product> {
+    const cacheKey = CacheKeys.product(tenantId, id);
+    const cached = await this.cache.get<Product>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const product = await this.productRepo.findOne({
       where: {
         id,
@@ -130,6 +150,8 @@ export class ProductService {
         `There is no product with ID ${id} in tenant ${tenantId}`,
       );
     }
+
+    await this.cache.set(cacheKey, product, CACHE_TTL.PRODUCT);
 
     return product;
   }
@@ -165,7 +187,10 @@ export class ProductService {
     }
 
     try {
-      return await this.productRepo.save(product);
+      const saved = await this.productRepo.save(product);
+      await this.cache.del(CacheKeys.product(tenantId, id));
+      await this.cache.delByPattern(CacheKeys.productsPattern(tenantId));
+      return saved;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException(
@@ -196,6 +221,8 @@ export class ProductService {
     }
 
     await this.productRepo.softRemove(product);
+    await this.cache.del(CacheKeys.product(tenantId, id));
+    await this.cache.delByPattern(CacheKeys.productsPattern(tenantId));
   }
 
   async assertSkuUniqueness(skuPrefix: string, tenantId: string) {

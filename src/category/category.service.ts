@@ -17,12 +17,15 @@ import {
 } from '../common/interfaces/paginated-response.interface';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { isUniqueViolation } from '../common/utils/assert-unique.util';
+import { CacheService } from '../common/services/cache.service';
+import { CACHE_TTL, CacheKeys } from '../common/constants/cache.constants';
 
 @Injectable()
 export class CategoryService {
   constructor(
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
+    private readonly cache: CacheService,
   ) {}
 
   async create(tenantId: string, dto: CreateCategoryDto): Promise<Category> {
@@ -48,6 +51,7 @@ export class CategoryService {
 
     try {
       await this.categoryRepo.save(category);
+      await this.invalidateCollections(tenantId);
       return category;
     } catch (err) {
       if (isUniqueViolation(err)) {
@@ -63,6 +67,12 @@ export class CategoryService {
     tenantId: string,
     query: CategoryQueryDto,
   ): Promise<PaginatedResponse<Category>> {
+    const cacheKey = CacheKeys.categoriesList(tenantId, query);
+    const cached = await this.cache.get<PaginatedResponse<Category>>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const skip = (page - 1) * limit;
@@ -114,14 +124,24 @@ export class CategoryService {
       next: page < totalPages ? this.createLink(page + 1, limit) : null,
     };
 
-    return {
+    const response: PaginatedResponse<Category> = {
       data,
       meta,
       links,
     };
+
+    await this.cache.set(cacheKey, response, CACHE_TTL.CATEGORY);
+
+    return response;
   }
 
   async findTree(tenantId: string): Promise<Category[]> {
+    const cacheKey = CacheKeys.categoriesTree(tenantId);
+    const cached = await this.cache.get<Category[]>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const result = await this.categoryRepo.find({
       where: {
         tenant: { id: tenantId },
@@ -136,10 +156,19 @@ export class CategoryService {
       );
     }
 
-    return this.buildTree(result);
+    const tree = this.buildTree(result);
+    await this.cache.set(cacheKey, tree, CACHE_TTL.CATEGORY);
+
+    return tree;
   }
 
   async findOne(tenantId: string, id: string): Promise<Category> {
+    const cacheKey = CacheKeys.category(tenantId, id);
+    const cached = await this.cache.get<Category>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const result = await this.categoryRepo.findOne({
       where: {
         id,
@@ -154,6 +183,8 @@ export class CategoryService {
         `Category with ID "${id}" not found for tenant ${tenantId}`,
       );
     }
+
+    await this.cache.set(cacheKey, result, CACHE_TTL.CATEGORY);
 
     return result;
   }
@@ -191,7 +222,10 @@ export class CategoryService {
     }
 
     try {
-      return await this.categoryRepo.save(target);
+      const saved = await this.categoryRepo.save(target);
+      await this.cache.del(CacheKeys.category(tenantId, id));
+      await this.invalidateCollections(tenantId);
+      return saved;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException(
@@ -216,6 +250,13 @@ export class CategoryService {
     }
 
     await this.categoryRepo.softRemove(target);
+    await this.cache.del(CacheKeys.category(tenantId, id));
+    await this.invalidateCollections(tenantId);
+  }
+
+  private async invalidateCollections(tenantId: string): Promise<void> {
+    await this.cache.delByPattern(CacheKeys.categoriesPattern(tenantId));
+    await this.cache.delByPattern(CacheKeys.productsPattern(tenantId));
   }
 
   private async assertSlugUnique(

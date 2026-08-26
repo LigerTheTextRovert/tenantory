@@ -6,6 +6,8 @@ import { ProductService } from './product.service';
 import { Product } from '../entities/product.entity';
 import { CategoryService } from '../../category/category.service';
 import { ProductQueryDto } from './dto/product-query.dto';
+import { CacheService } from '../../common/services/cache.service';
+import { CACHE_TTL, CacheKeys } from '../../common/constants/cache.constants';
 
 describe('ProductService', () => {
   let service: ProductService;
@@ -18,6 +20,13 @@ describe('ProductService', () => {
     manager: { getRepository: jest.Mock };
   };
   let categoryService: { findOne: jest.Mock };
+  let cache: {
+    get: jest.Mock;
+    set: jest.Mock;
+    del: jest.Mock;
+    delByPattern: jest.Mock;
+    ttl: jest.Mock;
+  };
 
   const TENANT_ID = '550e8400-e29b-41d4-a716-446655440000';
   const CATEGORY_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
@@ -51,11 +60,20 @@ describe('ProductService', () => {
       findOne: jest.fn(),
     };
 
+    cache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
+      del: jest.fn().mockResolvedValue(undefined),
+      delByPattern: jest.fn().mockResolvedValue(undefined),
+      ttl: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductService,
         { provide: getRepositoryToken(Product), useValue: productRepo },
         { provide: CategoryService, useValue: categoryService },
+        { provide: CacheService, useValue: cache },
       ],
     }).compile();
 
@@ -462,6 +480,133 @@ describe('ProductService', () => {
       await expect(
         service.assertSkuUniqueness('TSH', TENANT_ID),
       ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('caching', () => {
+    it('should return cached product on cache hit without querying the database', async () => {
+      const cachedProduct = { id: PRODUCT_ID, name: 'Cached' };
+      cache.get.mockResolvedValue(cachedProduct);
+
+      const result = await service.findOne(TENANT_ID, PRODUCT_ID);
+
+      expect(result).toEqual(cachedProduct);
+      expect(cache.get).toHaveBeenCalledWith(
+        CacheKeys.product(TENANT_ID, PRODUCT_ID),
+      );
+      expect(productRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should store database result in cache with product TTL on cache miss', async () => {
+      const product = { id: PRODUCT_ID, name: 'T-Shirt' };
+      productRepo.findOne.mockResolvedValue(product);
+
+      const result = await service.findOne(TENANT_ID, PRODUCT_ID);
+
+      expect(result).toEqual(product);
+      expect(cache.set).toHaveBeenCalledWith(
+        CacheKeys.product(TENANT_ID, PRODUCT_ID),
+        product,
+        CACHE_TTL.PRODUCT,
+      );
+    });
+
+    it('should not cache when product is not found', async () => {
+      productRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.findOne(TENANT_ID, PRODUCT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('should return cached paginated list on cache hit without querying the database', async () => {
+      const cachedResponse = { data: [], meta: {}, links: {} };
+      cache.get.mockResolvedValue(cachedResponse);
+
+      const query: ProductQueryDto = { page: 1, limit: 10 };
+      const result = await service.findAll(TENANT_ID, query);
+
+      expect(result).toBe(cachedResponse);
+      expect(productRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('should invalidate entity key and list pattern after update succeeds', async () => {
+      productRepo.findOne.mockResolvedValue({
+        id: PRODUCT_ID,
+        name: 'T-Shirt',
+        skuPrefix: 'TSH',
+        category: { id: CATEGORY_ID },
+        isActive: true,
+      });
+      productRepo.save.mockImplementation((p) => Promise.resolve(p));
+
+      await service.update(TENANT_ID, PRODUCT_ID, { name: 'Polo Shirt' });
+
+      expect(productRepo.save).toHaveBeenCalled();
+      expect(cache.del).toHaveBeenCalledWith(
+        CacheKeys.product(TENANT_ID, PRODUCT_ID),
+      );
+      expect(cache.delByPattern).toHaveBeenCalledWith(
+        CacheKeys.productsPattern(TENANT_ID),
+      );
+    });
+
+    it('should not invalidate caches when update fails', async () => {
+      productRepo.findOne.mockResolvedValue({
+        id: PRODUCT_ID,
+        name: 'T-Shirt',
+        skuPrefix: 'TSH',
+        category: { id: CATEGORY_ID },
+        isActive: true,
+      });
+      productRepo.save.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.update(TENANT_ID, PRODUCT_ID, { name: 'X' }),
+      ).rejects.toThrow('db down');
+
+      expect(cache.del).not.toHaveBeenCalled();
+      expect(cache.delByPattern).not.toHaveBeenCalled();
+    });
+
+    it('should invalidate entity key and list pattern after delete succeeds', async () => {
+      productRepo.findOne.mockResolvedValue({ id: PRODUCT_ID });
+      const variantRepo = { count: jest.fn().mockResolvedValue(0) };
+      productRepo.manager.getRepository.mockReturnValue(variantRepo);
+      productRepo.softRemove.mockResolvedValue(undefined);
+
+      await service.remove(TENANT_ID, PRODUCT_ID);
+
+      expect(productRepo.softRemove).toHaveBeenCalled();
+      expect(cache.del).toHaveBeenCalledWith(
+        CacheKeys.product(TENANT_ID, PRODUCT_ID),
+      );
+      expect(cache.delByPattern).toHaveBeenCalledWith(
+        CacheKeys.productsPattern(TENANT_ID),
+      );
+    });
+
+    it('should invalidate list pattern after create succeeds', async () => {
+      categoryService.findOne.mockResolvedValue({ id: CATEGORY_ID });
+
+      const qb = mockQueryBuilder();
+      qb.getExists.mockResolvedValue(false);
+      productRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const savedProduct = { id: PRODUCT_ID, name: 'New' };
+      productRepo.create.mockReturnValue(savedProduct);
+      productRepo.save.mockResolvedValue(savedProduct);
+
+      await service.create(TENANT_ID, {
+        name: 'New',
+        categoryId: CATEGORY_ID,
+        skuPrefix: 'NEW',
+      });
+
+      expect(cache.delByPattern).toHaveBeenCalledWith(
+        CacheKeys.productsPattern(TENANT_ID),
+      );
     });
   });
 });

@@ -5,6 +5,8 @@ import { IsNull } from 'typeorm';
 import { CategoryService } from './category.service';
 import { Category } from './entities/category.entity';
 import { CategoryQueryDto } from './dto/category-query.dto';
+import { CacheService } from '../common/services/cache.service';
+import { CACHE_TTL, CacheKeys } from '../common/constants/cache.constants';
 
 describe('CategoryService', () => {
   let service: CategoryService;
@@ -16,6 +18,13 @@ describe('CategoryService', () => {
     count: jest.Mock;
     softRemove: jest.Mock;
     createQueryBuilder: jest.Mock;
+  };
+  let cache: {
+    get: jest.Mock;
+    set: jest.Mock;
+    del: jest.Mock;
+    delByPattern: jest.Mock;
+    ttl: jest.Mock;
   };
 
   const TENANT_ID = '550e8400-e29b-41d4-a716-446655440000';
@@ -46,10 +55,19 @@ describe('CategoryService', () => {
       createQueryBuilder: jest.fn().mockReturnValue(qb),
     };
 
+    cache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
+      del: jest.fn().mockResolvedValue(undefined),
+      delByPattern: jest.fn().mockResolvedValue(undefined),
+      ttl: jest.fn().mockResolvedValue(null),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CategoryService,
         { provide: getRepositoryToken(Category), useValue: categoryRepo },
+        { provide: CacheService, useValue: cache },
       ],
     }).compile();
 
@@ -384,17 +402,21 @@ describe('CategoryService', () => {
       qb.getExists.mockResolvedValue(false);
       categoryRepo.createQueryBuilder.mockReturnValue(qb);
 
-      categoryRepo.findOne.mockResolvedValue({
-        id: PARENT_ID,
-        name: 'Root',
-      });
+      categoryRepo.findOne
+        .mockResolvedValueOnce({
+          id: CATEGORY_ID,
+          name: 'Electronics',
+          slug: 'electronics',
+          parent: null,
+        })
+        .mockResolvedValueOnce({ id: PARENT_ID, name: 'Root' });
       categoryRepo.save.mockImplementation((c) => Promise.resolve(c));
 
       const result = await service.update(TENANT_ID, CATEGORY_ID, {
         parentId: PARENT_ID,
       });
 
-      expect(result.parent).toEqual({ id: PARENT_ID });
+      expect(result.parent).toEqual(expect.objectContaining({ id: PARENT_ID }));
     });
 
     it('should set parent to null when parentId is empty string', async () => {
@@ -511,12 +533,156 @@ describe('CategoryService', () => {
       expect(result[1].children).toHaveLength(0);
     });
 
-    it('should handle empty result', async () => {
+    it('should throw NotFoundException for empty result', async () => {
       categoryRepo.find.mockResolvedValue([]);
+
+      await expect(service.findTree(TENANT_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('caching', () => {
+    it('should return cached category on cache hit without querying the database', async () => {
+      const cachedCategory = { id: CATEGORY_ID, name: 'Cached' };
+      cache.get.mockResolvedValue(cachedCategory);
+
+      const result = await service.findOne(TENANT_ID, CATEGORY_ID);
+
+      expect(result).toEqual(cachedCategory);
+      expect(cache.get).toHaveBeenCalledWith(
+        CacheKeys.category(TENANT_ID, CATEGORY_ID),
+      );
+      expect(categoryRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should store database result in cache with category TTL on cache miss', async () => {
+      const category = { id: CATEGORY_ID, name: 'Electronics' };
+      categoryRepo.findOne.mockResolvedValue(category);
+
+      const result = await service.findOne(TENANT_ID, CATEGORY_ID);
+
+      expect(result).toEqual(category);
+      expect(cache.set).toHaveBeenCalledWith(
+        CacheKeys.category(TENANT_ID, CATEGORY_ID),
+        category,
+        CACHE_TTL.CATEGORY,
+      );
+    });
+
+    it('should not cache when category is not found', async () => {
+      categoryRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.findOne(TENANT_ID, CATEGORY_ID)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(cache.set).not.toHaveBeenCalled();
+    });
+
+    it('should return cached paginated list on cache hit without querying the database', async () => {
+      const cachedResponse = { data: [], meta: {}, links: {} };
+      cache.get.mockResolvedValue(cachedResponse);
+
+      const query: CategoryQueryDto = { page: 1, limit: 10 };
+      const result = await service.findAll(TENANT_ID, query);
+
+      expect(result).toBe(cachedResponse);
+      expect(categoryRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('should return cached tree on cache hit without querying the database', async () => {
+      const cachedTree = [{ id: 'root-1', children: [] }];
+      cache.get.mockResolvedValue(cachedTree);
 
       const result = await service.findTree(TENANT_ID);
 
-      expect(result).toHaveLength(0);
+      expect(result).toBe(cachedTree);
+      expect(cache.get).toHaveBeenCalledWith(
+        CacheKeys.categoriesTree(TENANT_ID),
+      );
+      expect(categoryRepo.find).not.toHaveBeenCalled();
+    });
+
+    it('should invalidate entity key and collection patterns after update succeeds', async () => {
+      const qb = mockQueryBuilder();
+      qb.getExists.mockResolvedValue(false);
+      categoryRepo.createQueryBuilder.mockReturnValue(qb);
+      categoryRepo.findOne.mockResolvedValue({
+        id: CATEGORY_ID,
+        name: 'Electronics',
+        slug: 'electronics',
+        parent: null,
+      });
+      categoryRepo.save.mockImplementation((c) => Promise.resolve(c));
+
+      await service.update(TENANT_ID, CATEGORY_ID, { name: 'Computing' });
+
+      expect(categoryRepo.save).toHaveBeenCalled();
+      expect(cache.del).toHaveBeenCalledWith(
+        CacheKeys.category(TENANT_ID, CATEGORY_ID),
+      );
+      expect(cache.delByPattern).toHaveBeenCalledWith(
+        CacheKeys.categoriesPattern(TENANT_ID),
+      );
+      expect(cache.delByPattern).toHaveBeenCalledWith(
+        CacheKeys.productsPattern(TENANT_ID),
+      );
+    });
+
+    it('should not invalidate caches when update fails', async () => {
+      const qb = mockQueryBuilder();
+      qb.getExists.mockResolvedValue(false);
+      categoryRepo.createQueryBuilder.mockReturnValue(qb);
+      categoryRepo.findOne.mockResolvedValue({
+        id: CATEGORY_ID,
+        name: 'Electronics',
+        slug: 'electronics',
+        parent: null,
+      });
+      categoryRepo.save.mockRejectedValue(new Error('db down'));
+
+      await expect(
+        service.update(TENANT_ID, CATEGORY_ID, { name: 'X' }),
+      ).rejects.toThrow('db down');
+
+      expect(cache.del).not.toHaveBeenCalled();
+      expect(cache.delByPattern).not.toHaveBeenCalled();
+    });
+
+    it('should invalidate entity key and collection patterns after delete succeeds', async () => {
+      categoryRepo.findOne.mockResolvedValue({ id: CATEGORY_ID });
+      categoryRepo.count.mockResolvedValue(0);
+      categoryRepo.softRemove.mockResolvedValue(undefined);
+
+      await service.remove(TENANT_ID, CATEGORY_ID);
+
+      expect(categoryRepo.softRemove).toHaveBeenCalled();
+      expect(cache.del).toHaveBeenCalledWith(
+        CacheKeys.category(TENANT_ID, CATEGORY_ID),
+      );
+      expect(cache.delByPattern).toHaveBeenCalledWith(
+        CacheKeys.categoriesPattern(TENANT_ID),
+      );
+    });
+
+    it('should invalidate collection patterns after create succeeds', async () => {
+      const qb = mockQueryBuilder();
+      qb.getExists.mockResolvedValue(false);
+      categoryRepo.createQueryBuilder.mockReturnValue(qb);
+
+      const created = { id: CATEGORY_ID, name: 'New', slug: 'new' };
+      categoryRepo.create.mockReturnValue(created);
+      categoryRepo.save.mockResolvedValue(created);
+
+      await service.create(TENANT_ID, { name: 'New' });
+
+      expect(cache.delByPattern).toHaveBeenCalledWith(
+        CacheKeys.categoriesPattern(TENANT_ID),
+      );
+      expect(cache.delByPattern).toHaveBeenCalledWith(
+        CacheKeys.productsPattern(TENANT_ID),
+      );
     });
   });
 });
