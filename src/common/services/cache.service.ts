@@ -1,10 +1,6 @@
-import {
-  Inject,
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import Redis from 'ioredis';
+import { CACHE_TTL } from '../constants/cache.constants';
 
 @Injectable()
 export class CacheService {
@@ -15,7 +11,11 @@ export class CacheService {
     private readonly redis: Redis,
   ) {}
 
-  async set<T>(key: string, value: T, ttl = 300): Promise<void> {
+  async set<T>(
+    key: string,
+    value: T,
+    ttl: number = CACHE_TTL.DEFAULT,
+  ): Promise<void> {
     try {
       await this.redis.set(key, JSON.stringify(value), 'EX', ttl);
     } catch (error) {
@@ -58,6 +58,32 @@ export class CacheService {
       await this.redis.del(key);
     } catch (error) {
       this.logger.error(`Failed to delete cache key: ${key}`, error);
+    }
+  }
+
+  async delByPattern(pattern: string): Promise<void> {
+    try {
+      let cursor = '0';
+
+      do {
+        const [nextCursor, keys] = await this.redis.scan(
+          cursor,
+          'MATCH',
+          pattern,
+          'COUNT',
+          100,
+        );
+        cursor = nextCursor;
+
+        if (keys.length > 0) {
+          await this.redis.del(...keys);
+        }
+      } while (cursor !== '0');
+    } catch (error) {
+      this.logger.error(
+        `Failed to delete cache keys matching pattern: ${pattern}`,
+        error,
+      );
     }
   }
 }
