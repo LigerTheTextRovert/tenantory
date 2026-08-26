@@ -11,6 +11,9 @@ import { CacheService } from '../common/services/cache.service';
         return new Redis({
           host: process.env.REDIS_HOST ?? 'localhost',
           port: Number(process.env.REDIS_PORT ?? 6379),
+          enableOfflineQueue: false,
+          maxRetriesPerRequest: 1,
+          retryStrategy: (times) => Math.min(times * 500, 5000),
         });
       },
     },
