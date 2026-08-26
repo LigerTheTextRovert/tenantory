@@ -1,81 +1,103 @@
 # Tenantory: Resume-Worthy Engineering Roadmap
 
-To elevate **Tenantory** (a Multi-Tenant E-Commerce Inventory & Catalog System) from a "good side project" to a **senior-level, resume-defining portfolio piece**, it needs to demonstrate your ability to handle production realities: concurrency, observability, deployment, and strict testing. 
+Goal: elevate **Tenantory** from "good side project" to a **senior-level, resume-defining portfolio piece** by demonstrating production realities — concurrency, observability, deployment, and rigorous testing.
 
-You already have an excellent foundation (NestJS, TypeORM, BullMQ, Redis, MinIO, JWT, Multi-Tenancy). This milestone tracker outlines the missing pieces required to prove you are a senior backend engineer.
+This document is the single source of truth for what is done, in progress, and missing. It is updated as milestones land.
+
+**Legend:** ✅ done · 🟡 partially done · ⬜ not started
 
 ---
 
-## Milestone 1: Data Integrity & High Concurrency (The "Senior" Differentiator)
-*Inventory systems are notoriously hard because of race conditions. Solving this proves you understand backend engineering.*
+## Current State Snapshot
 
-- [ ] **Implement Optimistic & Pessimistic Locking**: 
-  - Add `@VersionColumn()` to the `StockLevel` entity.
-  - Implement retry-logic for `OptimisticLockVersionMismatchError` when two users buy the last item at the exact same millisecond.
-- [ ] **Distributed Locks (Redis/Redlock)**:
-  - Implement a `LockService` using Redis to lock operations around highly contested SKUs (e.g., Flash Sales).
-- [ ] **Database Transactions**:
-  - Ensure operations spanning multiple tables (e.g., Deducting Inventory + Creating an Audit Log) use strict TypeORM `QueryRunner` transactions with the correct isolation levels (`READ COMMITTED` or `SERIALIZABLE`).
+| Area | Status | Notes |
+| --- | --- | --- |
+| Multi-tenancy (shared DB, RLF) | ✅ | TenantMiddleware → TenantGuard → TenantInterceptor, tenant-scoped repos |
+| Auth + RBAC (JWT access/refresh) | ✅ | Passport strategies, role guards, refresh flow |
+| Catalog / Category / Variant CRUD | ✅ | Paginated, tenant-scoped, soft deletes |
+| Inventory stock management | ✅ | `@VersionColumn` optimistic locking on `stock_levels` |
+| Redis caching layer | ✅ | Cache-aside via `CacheService`, tenant-prefixed keys, SCAN-based invalidation after writes |
+| Structured logging | 🟡 | `nestjs-pino` wired globally + request-id middleware; no `tenantId` correlation yet |
+| Strict DTO validation | ✅ | `whitelist: true`, `forbidNonWhitelisted: true` global ValidationPipe |
+| Unit tests | ✅ | 100+ passing (services, cache, key builder); suite green |
+| Infra via docker compose | ✅ | Postgres 17, Redis, MinIO, pgAdmin |
+| Retry with exponential backoff + jitter | ✅ | `common/utils/retry.util.ts` |
 
-## Milestone 2: Observability, Metrics & Structured Logging
-*Senior engineers don't guess; they measure. You need to prove you can monitor a system.*
+---
 
-- [ ] **Structured Logging**: Replace the default NestJS logger with `nestjs-pino`. Configure it to output JSON logs containing `requestId` and `tenantId` in every single log line for easy traceability.
-- [ ] **Prometheus Metrics**: Integrate `@willsoto/nestjs-prometheus` to expose a `/metrics` endpoint. 
-  - Track API Latency (p50, p95, p99).
-  - Track active active connections and database query execution times.
-- [ ] **Health Checks**: Expand your `@nestjs/terminus` implementation.
-  - Ensure the `/health` endpoint strictly checks Postgres, Redis, and MinIO connectivity.
+## Milestone 1: Data Integrity & High Concurrency — *the senior differentiator*
+
+Inventory systems are hard because of race conditions. Proving you solved them is the strongest signal on a resume.
+
+- [x] **Optimistic locking**: `@VersionColumn()` on `StockLevel`.
+- [ ] **Locking retry integration**: wire `retryWithBackoff` into inventory mutation paths so concurrent `OptimisticLockVersionMismatchError`s retry instead of surfacing as 500s.
+- [ ] **Distributed locks (Redlock pattern)**: a `LockService` over Redis to serialize contested SKU allocations (flash-sale scenario).
+- [ ] **Explicit transactions**: multi-table mutations (deduct stock + write audit log) wrapped in TypeORM `QueryRunner` transactions with deliberate isolation levels (`READ COMMITTED` vs `SERIALIZABLE`).
+- [ ] **Concurrency proof test**: an integration test that fires N parallel allocations against one SKU and asserts zero oversell.
+
+## Milestone 2: Observability, Metrics & Health
+
+Senior engineers measure; they don't guess.
+
+- [x] **Structured JSON logging**: `nestjs-pino`, buffered logs, request IDs.
+- [ ] **Tenant-aware log context**: bind `tenantId` (and `requestId`) into every log line via pino child loggers or a Nest scope.
+- [ ] **Prometheus metrics**: `/metrics` endpoint (`@willsoto/nestjs-prometheus`) — HTTP latency histogram (p50/p95/p99), DB query durations, cache hit/miss ratio.
+- [ ] **Health checks**: `@nestjs/terminus` is installed but **not wired**. Implement `/health` checking Postgres, Redis (PING), and MinIO (bucket existence).
 
 ## Milestone 3: Database Optimization & Search
-*E-commerce catalogs require fast reads.*
 
-- [ ] **Advanced Indexing**: 
-  - Implement PostgreSQL `pg_trgm` extensions for fuzzy-searching product names and SKUs. 
-  - Ensure foreign keys and tenant ID columns have composite indexes (`CREATE INDEX idx_tenant_sku ON inventory(tenant_id, sku);`).
-- [ ] **Caching Strategy (Read-Through/Write-Behind)**:
-  - Use your existing `CacheManager` to cache frequent Catalog GET requests.
-  - Implement aggressive cache invalidation strategies using BullMQ when a product is updated.
-- [ ] **Database Migrations**: 
-  - Turn OFF `synchronize: true` in your `.env`. 
-  - Set up a strict TypeORM migration generation and execution pipeline (`npm run migration:generate`, `npm run migration:run`).
+- [x] **Redis caching**: read-through on hot paths (products, categories, user profile), centralized TTLs and key naming, invalidation only after successful DB writes.
+- [ ] **Cache stampede protection**: jittered TTLs or single-flight locks for hot list keys.
+- [ ] **pg_trgm fuzzy search**: the `search` module currently uses `ILIKE`. Add the extension plus GIN indexes (`gin(column gin_trgm_ops)`) on product names/SKUs via migration.
+- [x] **No `synchronize` in prod**: `DB_SYNCHRONIZE` env-gated, default off.
+- [ ] **Migration pipeline**: no migrations exist yet and there are **no `migration:*` scripts**. Add `migration:generate` / `migration:run` / `migration:revert` scripts and generate the initial schema from the live entities.
 
-## Milestone 4: Event-Driven Architecture (Decoupling)
-*Monoliths should still be internally decoupled.*
+## Milestone 4: Event-Driven Decoupling
 
-- [ ] **Domain Events**: 
-  - Implement `@nestjs/event-emitter`. When an `InventoryDeductedEvent` is fired, an independent listener should pick it up to clear the Redis cache and send a notification, keeping the HTTP controller extremely fast.
-- [ ] **Background Job Processing**:
-  - Use your existing `BullMQ` setup to handle heavy tasks (e.g., generating end-of-day sales reports, batch uploading products via CSV, or resizing uploaded images in `MediaService`).
+Monoliths should still be internally decoupled.
+
+- [ ] **Domain events**: `@nestjs/event-emitter` — e.g., `ProductChangedEvent` listener owns cache invalidation and notifications, keeping services and controllers lean.
+- [ ] **BullMQ workers**: `bullmq` is a dependency but **no queue is wired**. Ship at least one real worker: CSV bulk import (`import-export`) or image processing (`media`), with retries and dead-letter handling.
 
 ## Milestone 5: Security & Tenancy Hardening
-*Prove that your multi-tenant data is completely isolated.*
 
-- [ ] **Global Row-Level Filtering Check**:
-  - Write specific integration tests to prove Tenant A cannot access Tenant B's catalog using ID guessing (BOLA / IDOR protection).
-- [ ] **API Rate Limiting**:
-  - Configure `@nestjs/throttler` using Redis (`throttler-storage-redis`) to prevent a single noisy tenant from DDOSing the shared database.
-- [ ] **Strict DTO Validation**:
-  - Ensure `whitelist: true` and `forbidNonWhitelisted: true` are enabled globally so unexpected payload data is stripped automatically.
+- [ ] **BOLA/IDOR proof tests**: integration tests demonstrating Tenant A cannot read/write Tenant B resources by guessing UUIDs.
+- [ ] **Rate limiting**: `@nestjs/throttler` is installed but **not registered**. Configure it with Redis storage so limits are per-instance-safe and per-tenant fair.
+- [ ] **Helmet**: dependency present, never applied. Add `app.use(helmet())`.
+- [ ] **Refresh-token rotation & revocation**: persist hashed refresh tokens; rotate on use.
+- [ ] **Secrets hygiene**: JWT secrets currently live in `.env` committed patterns — document rotation and move to a secrets manager narrative for production.
 
-## Milestone 6: Testing & CI/CD Pipelines
-*Code doesn't exist until it's tested and deployed automatically.*
+## Milestone 6: Testing & CI/CD
 
-- [ ] **Automated Testing Setup**:
-  - **Unit Tests**: Test your complex business logic (like price calculations and locking) using Jest.
-  - **Integration Tests (E2E)**: Use `TestContainers` to spin up a real Postgres & Redis instance, run migrations, and hit your API using `supertest`.
-- [ ] **GitHub Actions (CI/CD)**:
-  - Create a `.github/workflows/main.yml` that runs `npm run lint`, `npm run test:e2e`, and builds the project on every Pull Request.
-- [ ] **Dockerization**:
-  - Create a highly-optimized, multi-stage `Dockerfile` (using `node:20-alpine`, copying only `package.json` for layer caching, and running as a non-root user).
+Code doesn't exist until it's tested and deployed automatically.
+
+- [x] **Unit tests**: Jest, mocked repositories, green suite.
+- [ ] **E2E with TestContainers**: spin real Postgres + Redis, run migrations, hit the API with `supertest` (current e2e config is boilerplate).
+- [ ] **Coverage gate**: enforce a meaningful threshold in `jest` config; publish coverage in CI.
+- [ ] **GitHub Actions CI**: lint → unit → build on every PR; e2e job with service containers.
+- [ ] **Production Dockerfile**: multi-stage, `node:20-alpine`, pnpm fetch layer caching, non-root user, healthcheck.
+- [ ] **Deploy story**: even a single VM with Compose + Nginx reverse proxy (TLS, rate limiting) completes the narrative end-to-end.
 
 ---
 
-### How to pitch this on your Resume:
+## Priority Order (highest resume value first)
+
+1. Migration pipeline + pg_trgm indexes *(cheap, unblocks everything else)*
+2. Concurrency hardening: retry wiring, Redlock, oversell-proof integration test
+3. E2E TestContainers + GitHub Actions CI
+4. Terminus health checks, Helmet, throttler registration *(all near-free wins — deps already installed)*
+5. Prometheus metrics + tenant-aware logging
+6. One real BullMQ worker + domain events
+7. Dockerfile + deploy story
+
+## How to pitch this on your resume
+
 > **Tenantory – Multi-Tenant E-Commerce Core API**
 > *Built a highly concurrent, modular-monolithic inventory and catalog API using NestJS, PostgreSQL, and Redis.*
-> - Architected a strict multi-tenant data layer guaranteeing logical isolation via Row-Level Filtering.
-> - Engineered highly-concurrent inventory allocation using TypeORM Optimistic Locking and Redis distributed locks, eliminating race conditions during high-volume transactions.
-> - Implemented an event-driven background processing architecture using BullMQ for catalog imports and cache invalidations.
-> - Achieved sub-50ms p95 read latency for catalog queries by leveraging Redis caching and PostgreSQL `pg_trgm` fuzzy-search indexes.
-> - Ensured production readiness with structured JSON logging (Pino), Prometheus metrics, and automated CI/CD pipelines using GitHub Actions and Docker.
+> - Architected a strict multi-tenant data layer guaranteeing logical isolation via row-level filtering with tenant-scoped guards and interceptors.
+> - Engineered highly-concurrent inventory allocation using optimistic locking, retry-with-jitter, and Redis distributed locks, eliminating oversell race conditions.
+> - Designed a Redis cache-aside layer with tenant-prefixed keys, centralized TTL policy, and post-write SCAN-based invalidation, keeping cross-tenant data out of the cache.
+> - Achieved sub-50ms p95 catalog reads via Redis caching and PostgreSQL pg_trgm GIN-indexed fuzzy search.
+> - Ensured production readiness with structured JSON logging (Pino), Prometheus metrics, containerized E2E tests, and CI/CD via GitHub Actions and Docker.
+
+*(Only claim bullets above once the corresponding milestone checkbox is ticked — interviewers drill into every line item.)*
