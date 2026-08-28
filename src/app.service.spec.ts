@@ -1,0 +1,22 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { AppService } from './app.service';
+
+describe('AppService', () => {
+  let service: AppService;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [AppService],
+    }).compile();
+
+    service = module.get<AppService>(AppService);
+  });
+
+  describe('getHello', () => {
+    it('should return greeting message', () => {
+      expect(service.getHello()).toBe(
+        'Hello World! this is my first project in nest.js :D',
+      );
+    });
+  });
+});
