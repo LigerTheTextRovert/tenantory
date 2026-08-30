@@ -14,6 +14,7 @@ import { WarehouseModule } from './warehouse/warehouse.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 // import { dataSourceOption } from './config/db.config';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { TenantMiddleware } from './tenant/tenant.middleware';
@@ -26,6 +27,7 @@ import { MediaModule } from './media/media.module';
 import { AppLoggerModule } from './logger/app-logger.module';
 import { AdminModule } from './admin/admin.module';
 import { RedisModule } from './redis/redis.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -34,6 +36,7 @@ import { RedisModule } from './redis/redis.module';
       isGlobal: true,
     }),
     RedisModule,
+    EventEmitterModule.forRoot({ global: true }),
     AwsSdkModule.register({
       isGlobal: true,
       client: new S3Client({
@@ -75,6 +78,7 @@ import { RedisModule } from './redis/redis.module';
     AuthModule,
     MediaModule,
     AdminModule,
+    AuditModule,
     AppLoggerModule,
   ],
   controllers: [AppController],
