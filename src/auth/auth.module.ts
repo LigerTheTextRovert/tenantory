@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { AuditModule } from '../audit/audit.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RoleGuard } from './guards/role.guard';
@@ -14,6 +15,7 @@ import { PassportModule } from '@nestjs/passport';
   imports: [
     TypeOrmModule.forFeature([User]),
     PassportModule,
+    AuditModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
