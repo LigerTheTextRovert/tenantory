@@ -19,6 +19,9 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ConfigService } from '@nestjs/config';
 import { CacheService } from '../common/services/cache.service';
 import { CACHE_TTL, CacheKeys } from '../common/constants/cache.constants';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../audit/enums/audited-entity-type';
 
 @Injectable()
 export class AuthService {
@@ -28,6 +31,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
     private readonly cache: CacheService,
+    private readonly auditService: AuditService,
   ) {}
 
   async register(tenantId: string, dto: RegisterDto) {
@@ -50,6 +54,19 @@ export class AuthService {
     });
 
     const savedUser = await this.userRepo.save(newUser);
+
+    this.auditService.record({
+      action: AuditAction.CREATE,
+      entityType: AuditedEntityType.USER,
+      entityId: savedUser.id,
+      newValues: {
+        email: savedUser.email,
+        firstName: savedUser.firstName,
+        lastName: savedUser.lastName,
+        role: savedUser.role,
+      },
+    });
+
     return this.toUserResponseDto(savedUser);
   }
 
@@ -74,6 +91,15 @@ export class AuthService {
     }
 
     const { accessToken } = await this.generateTokens(user);
+
+    // actorId is intentionally absent here: no JWT has been validated yet,
+    // so the secure context carries no user. The subject is identified via
+    // entityId, and the audit listener persists the row with actorId=null.
+    this.auditService.record({
+      action: AuditAction.LOGIN,
+      entityType: AuditedEntityType.USER,
+      entityId: user.id,
+    });
 
     return accessToken;
   }

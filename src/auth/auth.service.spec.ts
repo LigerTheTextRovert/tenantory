@@ -15,6 +15,7 @@ import { User } from './entities/user.entity';
 import { UserRole } from './enum/user-role.enum';
 import { CacheService } from '../common/services/cache.service';
 import { CacheKeys, CACHE_TTL } from '../common/constants/cache.constants';
+import { AuditService } from '../audit/audit.service';
 
 jest.mock('bcryptjs');
 
@@ -75,6 +76,7 @@ describe('AuthService', () => {
         { provide: ConfigService, useValue: configService },
         { provide: JwtService, useValue: jwtService },
         { provide: CacheService, useValue: cache },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 
