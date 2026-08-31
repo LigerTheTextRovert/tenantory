@@ -7,9 +7,10 @@ import { TenantProvisioningService } from './services/tenant-provisioning.servic
 import { SystemAdminController } from './controllers/system-admin.controller';
 import { TenantAdminController } from './controllers/tenant-admin.controller';
 import { TenantUserManagementService } from './services/tenant-user-management.service';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([TenantSetting, User])],
+  imports: [TypeOrmModule.forFeature([TenantSetting, User]), AuditModule],
   controllers: [SystemAdminController, TenantAdminController],
   providers: [
     TenantSettingService,
