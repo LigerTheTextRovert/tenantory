@@ -6,6 +6,7 @@ import { IsNull } from 'typeorm';
 import { SupplierService } from './supplier.service';
 import { Supplier } from './entities/supplier.entity';
 import { SupplierQueryDto } from './dto/supplier-query.dto';
+import { AuditService } from '../audit/audit.service';
 
 describe('SupplierService', () => {
   let service: SupplierService;
@@ -44,6 +45,7 @@ describe('SupplierService', () => {
       providers: [
         SupplierService,
         { provide: getRepositoryToken(Supplier), useValue: supplierRepo },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 
