@@ -15,12 +15,16 @@ import {
   PaginationMeta,
 } from '../common/interfaces/paginated-response.interface';
 import { isUniqueViolation } from '../common/utils/assert-unique.util';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../audit/enums/audited-entity-type';
 
 @Injectable()
 export class WarehouseService {
   constructor(
     @InjectRepository(Warehouse)
     private readonly warehouseRepo: Repository<Warehouse>,
+    private readonly auditService: AuditService,
   ) {}
 
   async create(tenantId: string, dto: CreateWarehouseDto): Promise<Warehouse> {
@@ -34,7 +38,17 @@ export class WarehouseService {
     });
 
     try {
-      return await this.warehouseRepo.save(warehouse);
+      const saved = await this.warehouseRepo.save(warehouse);
+      this.auditService.record({
+        action: AuditAction.CREATE,
+        entityType: AuditedEntityType.WAREHOUSE,
+        entityId: saved.id,
+        newValues: {
+          name: saved.name,
+          location: saved.location ?? null,
+        },
+      });
+      return saved;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException(
@@ -122,6 +136,10 @@ export class WarehouseService {
     dto: UpdateWarehouseDto,
   ): Promise<Warehouse> {
     const warehouse = await this.findOne(tenantId, id);
+    const oldValues = {
+      name: warehouse.name,
+      location: warehouse.location ?? null,
+    };
 
     if (dto.name) {
       await this.assertNameUnique(tenantId, dto.name, id);
@@ -133,7 +151,18 @@ export class WarehouseService {
     }
 
     try {
-      return await this.warehouseRepo.save(warehouse);
+      const saved = await this.warehouseRepo.save(warehouse);
+      this.auditService.record({
+        action: AuditAction.UPDATE,
+        entityType: AuditedEntityType.WAREHOUSE,
+        entityId: saved.id,
+        oldValues,
+        newValues: {
+          name: saved.name,
+          location: saved.location ?? null,
+        },
+      });
+      return saved;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException(
@@ -147,6 +176,15 @@ export class WarehouseService {
   async remove(tenantId: string, id: string): Promise<void> {
     const warehouse = await this.findOne(tenantId, id);
     await this.warehouseRepo.softRemove(warehouse);
+    this.auditService.record({
+      action: AuditAction.DELETE,
+      entityType: AuditedEntityType.WAREHOUSE,
+      entityId: warehouse.id,
+      oldValues: {
+        name: warehouse.name,
+        location: warehouse.location ?? null,
+      },
+    });
   }
 
   private async assertNameUnique(
