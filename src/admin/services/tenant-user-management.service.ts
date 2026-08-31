@@ -15,6 +15,9 @@ import { isUniqueViolation } from '../../common/utils/assert-unique.util';
 import { UserRole } from '../../auth/enum/user-role.enum';
 import { CacheService } from '../../common/services/cache.service';
 import { CacheKeys } from '../../common/constants/cache.constants';
+import { AuditService } from '../../audit/audit.service';
+import { AuditAction } from '../../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../../audit/enums/audited-entity-type';
 
 @Injectable()
 export class TenantUserManagementService {
@@ -22,6 +25,7 @@ export class TenantUserManagementService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly cache: CacheService,
+    private readonly auditService: AuditService,
   ) {}
 
   async inviteUser(tenantId: string, dto: InviteUserDto): Promise<User> {
@@ -52,7 +56,19 @@ export class TenantUserManagementService {
     });
 
     try {
-      return await this.userRepo.save(newUser);
+      const saved = await this.userRepo.save(newUser);
+      this.auditService.record({
+        action: AuditAction.CREATE,
+        entityType: AuditedEntityType.USER,
+        entityId: saved.id,
+        newValues: {
+          email: saved.email,
+          firstName: saved.firstName,
+          lastName: saved.lastName,
+          role: saved.role,
+        },
+      });
+      return saved;
     } catch (error: unknown) {
       if (isUniqueViolation(error)) {
         throw new ConflictException(
@@ -85,11 +101,19 @@ export class TenantUserManagementService {
       throw new BadRequestException('Cannot assign or modify Super Admin role');
     }
 
+    const oldRole = user.role;
     user.role = dto.role;
 
     try {
       const saved = await this.userRepo.save(user);
       await this.cache.del(CacheKeys.user(tenantId, userId));
+      this.auditService.record({
+        action: AuditAction.UPDATE,
+        entityType: AuditedEntityType.USER,
+        entityId: saved.id,
+        oldValues: { role: oldRole },
+        newValues: { role: saved.role },
+      });
       return saved;
     } catch {
       throw new InternalServerErrorException('Failed to update user role');

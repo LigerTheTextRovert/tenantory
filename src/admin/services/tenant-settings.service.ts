@@ -3,12 +3,16 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TenantSetting } from '../entities/tenant-setting.entity';
 import { UpdateSettingsDto } from '../dto/update-settings.dto';
+import { AuditService } from '../../audit/audit.service';
+import { AuditAction } from '../../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../../audit/enums/audited-entity-type';
 
 @Injectable()
 export class TenantSettingService {
   constructor(
     @InjectRepository(TenantSetting)
     private readonly tenantSettingRepo: Repository<TenantSetting>,
+    private readonly auditService: AuditService,
   ) {}
 
   async getSettings(tenantId: string): Promise<TenantSetting> {
@@ -28,6 +32,7 @@ export class TenantSettingService {
     dto: UpdateSettingsDto,
   ): Promise<TenantSetting> {
     const settings = await this.getSettings(tenantId);
+    const oldConfig = settings.config ?? null;
 
     if (dto.config) {
       settings.config = {
@@ -36,6 +41,16 @@ export class TenantSettingService {
       };
     }
 
-    return await this.tenantSettingRepo.save(settings);
+    const saved = await this.tenantSettingRepo.save(settings);
+
+    this.auditService.record({
+      action: AuditAction.UPDATE,
+      entityType: AuditedEntityType.TENANT,
+      entityId: tenantId,
+      oldValues: { config: oldConfig },
+      newValues: { config: saved.config },
+    });
+
+    return saved;
   }
 }

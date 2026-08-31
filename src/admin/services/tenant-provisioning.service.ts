@@ -14,6 +14,9 @@ import { isUniqueViolation } from '../../common/utils/assert-unique.util';
 import { User } from '../../auth/entities/user.entity';
 import { UserRole } from '../../auth/enum/user-role.enum';
 import * as bcrypt from 'bcryptjs';
+import { AuditService } from '../../audit/audit.service';
+import { AuditAction } from '../../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../../audit/enums/audited-entity-type';
 
 @Injectable()
 export class TenantProvisioningService {
@@ -21,6 +24,7 @@ export class TenantProvisioningService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
+    private readonly auditService: AuditService,
   ) {}
 
   async createTenant(dto: CreateTenantDto): Promise<Tenant> {
@@ -82,6 +86,21 @@ export class TenantProvisioningService {
       await queryRunner.manager.save(tenantSetting);
 
       await queryRunner.commitTransaction();
+
+      // Emitted only after a successful commit — a rolled-back provisioning
+      // must never leave an audit trail of a tenant that does not exist.
+      this.auditService.record({
+        action: AuditAction.CREATE,
+        entityType: AuditedEntityType.TENANT,
+        entityId: savedTenant.id,
+        newValues: {
+          domainName: savedTenant.domainName,
+          businessName: savedTenant.businessName,
+          status: savedTenant.status,
+          adminUserId: adminUser.id,
+        },
+      });
+
       return savedTenant;
     } catch (error: unknown) {
       await queryRunner.rollbackTransaction();
@@ -113,10 +132,19 @@ export class TenantProvisioningService {
       throw new NotFoundException('Tenant not found');
     }
 
+    const oldStatus = tenant.status;
     tenant.status = newStatus;
 
     try {
-      return await this.tenantRepo.save(tenant);
+      const saved = await this.tenantRepo.save(tenant);
+      this.auditService.record({
+        action: AuditAction.UPDATE,
+        entityType: AuditedEntityType.TENANT,
+        entityId: saved.id,
+        oldValues: { status: oldStatus },
+        newValues: { status: saved.status },
+      });
+      return saved;
     } catch {
       throw new InternalServerErrorException('Failed to update tenant status');
     }
