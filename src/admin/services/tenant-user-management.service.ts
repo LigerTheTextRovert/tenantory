@@ -12,12 +12,12 @@ import { InviteUserDto } from '../dto/invite-user.dto';
 import { UpdateUserRoleDto } from '../dto/update-user-role.dto';
 import * as bcrypt from 'bcryptjs';
 import { isUniqueViolation } from '../../common/utils/assert-unique.util';
-import { UserRole } from '../../auth/enum/user-role.enum';
-import { CacheService } from '../../common/services/cache.service';
-import { CacheKeys } from '../../common/constants/cache.constants';
 import { AuditService } from '../../audit/audit.service';
 import { AuditAction } from '../../audit/enums/audit-action.enum';
 import { AuditedEntityType } from '../../audit/enums/audited-entity-type';
+import { UserRole } from '../../auth/enum/user-role.enum';
+import { CacheService } from '../../common/services/cache.service';
+import { CacheKeys } from '../../common/constants/cache.constants';
 
 @Injectable()
 export class TenantUserManagementService {
@@ -25,7 +25,7 @@ export class TenantUserManagementService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly cache: CacheService,
-    private readonly auditService: AuditService,
+    private readonly audit: AuditService,
   ) {}
 
   async inviteUser(tenantId: string, dto: InviteUserDto): Promise<User> {
@@ -57,7 +57,7 @@ export class TenantUserManagementService {
 
     try {
       const saved = await this.userRepo.save(newUser);
-      this.auditService.record({
+      this.audit.record({
         action: AuditAction.CREATE,
         entityType: AuditedEntityType.USER,
         entityId: saved.id,
@@ -106,14 +106,14 @@ export class TenantUserManagementService {
 
     try {
       const saved = await this.userRepo.save(user);
-      await this.cache.del(CacheKeys.user(tenantId, userId));
-      this.auditService.record({
+      this.audit.record({
         action: AuditAction.UPDATE,
         entityType: AuditedEntityType.USER,
         entityId: saved.id,
         oldValues: { role: oldRole },
         newValues: { role: saved.role },
       });
+      await this.cache.del(CacheKeys.user(tenantId, userId));
       return saved;
     } catch {
       throw new InternalServerErrorException('Failed to update user role');

@@ -6,6 +6,7 @@ export const AuditedEntityType = {
   WAREHOUSE: 'warehouse',
   SUPPLIER: 'supplier',
   TENANT: 'tenant',
+  TENANT_SETTING: 'tenant_setting',
   USER: 'user',
 } as const;
 

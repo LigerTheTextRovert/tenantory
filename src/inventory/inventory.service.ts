@@ -26,6 +26,15 @@ import { DeductStockDto } from './dto/deduct-stock.dto';
 import { RetryOptions, retryWithBackoff } from '../common/utils/retry.util';
 import { ReleaseStockDto } from './dto/release-stock.dto';
 import { ReserveStockDto } from './dto/reserve-stock.dto';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../audit/enums/audited-entity-type';
+
+interface StockMovementAudit {
+  stockLevelId: string;
+  before: { availableQuantity: number; reservedQuantity: number };
+  after: { availableQuantity: number; reservedQuantity: number };
+}
 
 @Injectable()
 export class InventoryService {
@@ -36,6 +45,7 @@ export class InventoryService {
     private readonly inventoryRepo: Repository<StockLevel>,
     private readonly variantService: VariantService,
     private readonly warehouseService: WarehouseService,
+    private readonly audit: AuditService,
   ) {}
 
   private readonly retryOptions: RetryOptions = {
@@ -52,6 +62,8 @@ export class InventoryService {
       this.variantService.findOneById(tenantId, dto.variantId),
       this.warehouseService.findOne(tenantId, dto.warehouseId),
     ]);
+
+    let movement: StockMovementAudit | undefined;
 
     await retryWithBackoff(async () => {
       await this.dataSource.transaction(async (manager) => {
@@ -73,12 +85,31 @@ export class InventoryService {
           throw new BadRequestException('insufficient stock quantity');
         }
 
+        const before = {
+          availableQuantity: stockLevel.availableQuantity,
+          reservedQuantity: stockLevel.reservedQuantity,
+        };
+
         stockLevel.availableQuantity -= dto.quantity;
 
         // Persist change back to DB
         await manager.save(stockLevel);
+
+        movement = {
+          stockLevelId: stockLevel.id,
+          before,
+          after: {
+            availableQuantity: stockLevel.availableQuantity,
+            reservedQuantity: stockLevel.reservedQuantity,
+          },
+        };
       });
     }, this.retryOptions);
+
+    // Emitted only after the transaction has committed successfully
+    if (movement) {
+      this.recordStockMovement(movement);
+    }
   }
 
   async findAll(
@@ -175,7 +206,9 @@ export class InventoryService {
       this.variantService.findOneById(tenantId, dto.variantId),
     ]);
 
-    return retryWithBackoff(async () => {
+    let movement: StockMovementAudit | undefined;
+
+    const saved = await retryWithBackoff(async () => {
       return this.dataSource.transaction(async (manager) => {
         const stock = await this.findOrCreate(
           tenantId,
@@ -184,16 +217,41 @@ export class InventoryService {
           manager,
         );
 
+        const before = {
+          availableQuantity: stock.availableQuantity,
+          reservedQuantity: stock.reservedQuantity,
+        };
+
         stock.availableQuantity += dto.quantity;
 
         // Use manager.save to execute within the active transaction
-        return manager.save(stock);
+        const result = await manager.save(stock);
+
+        movement = {
+          stockLevelId: stock.id,
+          before,
+          after: {
+            availableQuantity: stock.availableQuantity,
+            reservedQuantity: stock.reservedQuantity,
+          },
+        };
+
+        return result;
       });
     }, this.retryOptions);
+
+    // Emitted only after the transaction has committed successfully
+    if (movement) {
+      this.recordStockMovement(movement);
+    }
+
+    return saved;
   }
 
   async reserveStock(tenantId: string, dto: ReserveStockDto): Promise<void> {
-    return retryWithBackoff(async () => {
+    let movement: StockMovementAudit | undefined;
+
+    await retryWithBackoff(async () => {
       return this.dataSource.transaction(async (manager) => {
         const stockLevel = await manager.findOne(StockLevel, {
           where: {
@@ -213,15 +271,36 @@ export class InventoryService {
           );
         }
 
+        const before = {
+          availableQuantity: stockLevel.availableQuantity,
+          reservedQuantity: stockLevel.reservedQuantity,
+        };
+
         stockLevel.availableQuantity -= dto.quantity;
         stockLevel.reservedQuantity += dto.quantity;
         await manager.save(stockLevel);
+
+        movement = {
+          stockLevelId: stockLevel.id,
+          before,
+          after: {
+            availableQuantity: stockLevel.availableQuantity,
+            reservedQuantity: stockLevel.reservedQuantity,
+          },
+        };
       });
     }, this.retryOptions);
+
+    // Emitted only after the transaction has committed successfully
+    if (movement) {
+      this.recordStockMovement(movement);
+    }
   }
 
   async releaseStock(tenantId: string, dto: ReleaseStockDto): Promise<void> {
-    return retryWithBackoff(async () => {
+    let movement: StockMovementAudit | undefined;
+
+    await retryWithBackoff(async () => {
       return this.dataSource.transaction(async (manager) => {
         const stockLevel = await manager.findOne(StockLevel, {
           where: {
@@ -241,12 +320,41 @@ export class InventoryService {
           );
         }
 
+        const before = {
+          availableQuantity: stockLevel.availableQuantity,
+          reservedQuantity: stockLevel.reservedQuantity,
+        };
+
         stockLevel.availableQuantity += dto.quantity;
         stockLevel.reservedQuantity -= dto.quantity;
 
         await manager.save(stockLevel);
+
+        movement = {
+          stockLevelId: stockLevel.id,
+          before,
+          after: {
+            availableQuantity: stockLevel.availableQuantity,
+            reservedQuantity: stockLevel.reservedQuantity,
+          },
+        };
       });
     }, this.retryOptions);
+
+    // Emitted only after the transaction has committed successfully
+    if (movement) {
+      this.recordStockMovement(movement);
+    }
+  }
+
+  private recordStockMovement(movement: StockMovementAudit): void {
+    this.audit.record({
+      action: AuditAction.UPDATE_INVENTORY,
+      entityType: AuditedEntityType.STOCK_LEVEL,
+      entityId: movement.stockLevelId,
+      oldValues: movement.before,
+      newValues: movement.after,
+    });
   }
 
   private createLink(page: number, limit: number) {

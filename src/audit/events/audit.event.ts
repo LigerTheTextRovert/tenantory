@@ -17,6 +17,11 @@ export interface AuditEventInput {
   oldValues?: Record<string, unknown> | null;
   newValues?: Record<string, unknown> | null;
   metadata?: AuditMetadata | null;
+  /**
+   * Explicit actor override for trusted system flows where no authenticated
+   * request context exists yet (e.g. LOGIN). Never sourced from client input.
+   */
+  actorId?: string | null;
 }
 
 export interface AuditEvent extends AuditEventInput {

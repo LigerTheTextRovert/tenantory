@@ -11,11 +11,11 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 
 import { AuthService } from './auth.service';
+import { AuditService } from '../audit/audit.service';
 import { User } from './entities/user.entity';
 import { UserRole } from './enum/user-role.enum';
 import { CacheService } from '../common/services/cache.service';
 import { CacheKeys, CACHE_TTL } from '../common/constants/cache.constants';
-import { AuditService } from '../audit/audit.service';
 
 jest.mock('bcryptjs');
 

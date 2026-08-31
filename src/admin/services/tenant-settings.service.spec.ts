@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotFoundException } from '@nestjs/common';
 
 import { TenantSettingService } from './tenant-settings.service';
+import { AuditService } from '../../audit/audit.service';
 import { TenantSetting } from '../entities/tenant-setting.entity';
 import { UpdateSettingsDto } from '../dto/update-settings.dto';
 
@@ -28,6 +29,7 @@ describe('TenantSettingService', () => {
           provide: getRepositoryToken(TenantSetting),
           useValue: tenantSettingRepo,
         },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

@@ -12,6 +12,9 @@ import { UpdateVariantDto } from './dto/update-variant.dto';
 import { VariantQueryDto } from './dto/variant-query.dto';
 import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
 import { isUniqueViolation } from '../../common/utils/assert-unique.util';
+import { AuditService } from '../../audit/audit.service';
+import { AuditAction } from '../../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../../audit/enums/audited-entity-type';
 
 @Injectable()
 export class VariantService {
@@ -20,6 +23,7 @@ export class VariantService {
     private readonly variantRepo: Repository<ProductVariant>,
     @InjectRepository(Product)
     private readonly productRepo: Repository<Product>,
+    private readonly audit: AuditService,
   ) {}
 
   async create(
@@ -53,7 +57,14 @@ export class VariantService {
     });
 
     try {
-      return await this.variantRepo.save(newVariant);
+      const saved = await this.variantRepo.save(newVariant);
+      this.audit.record({
+        action: AuditAction.CREATE,
+        entityType: AuditedEntityType.PRODUCT_VARIANT,
+        entityId: saved.id,
+        newValues: { sku: saved.sku, price: saved.price, productId },
+      });
+      return saved;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException(
@@ -193,6 +204,7 @@ export class VariantService {
     dto: UpdateVariantDto,
   ): Promise<ProductVariant> {
     const variant = await this.findOne(tenantId, productId, variantId);
+    const oldValues = { sku: variant.sku, price: variant.price };
 
     if (dto.sku && dto.sku !== variant.sku) {
       await this.assertSkuUniqueness(tenantId, dto.sku, variantId);
@@ -208,7 +220,15 @@ export class VariantService {
     }
 
     try {
-      return await this.variantRepo.save(variant);
+      const saved = await this.variantRepo.save(variant);
+      this.audit.record({
+        action: AuditAction.UPDATE,
+        entityType: AuditedEntityType.PRODUCT_VARIANT,
+        entityId: saved.id,
+        oldValues,
+        newValues: { sku: saved.sku, price: saved.price },
+      });
+      return saved;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictException(
@@ -225,7 +245,14 @@ export class VariantService {
     variantId: string,
   ): Promise<void> {
     const variant = await this.findOne(tenantId, productId, variantId);
+    const oldValues = { sku: variant.sku, price: variant.price };
     await this.variantRepo.softRemove(variant);
+    this.audit.record({
+      action: AuditAction.DELETE,
+      entityType: AuditedEntityType.PRODUCT_VARIANT,
+      entityId: variant.id,
+      oldValues,
+    });
   }
 
   private async assertSkuUniqueness(

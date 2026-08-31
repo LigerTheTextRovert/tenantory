@@ -4,6 +4,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DataSource, OptimisticLockVersionMismatchError } from 'typeorm';
 
 import { InventoryService } from './inventory.service';
+import { AuditService } from '../audit/audit.service';
 import { StockLevel } from './entities/stock-level.entity';
 import { VariantService } from '../catalog/variant/variant.service';
 import { WarehouseService } from '../warehouse/warehouse.service';
@@ -85,6 +86,7 @@ describe('InventoryService', () => {
         { provide: getRepositoryToken(StockLevel), useValue: inventoryRepo },
         { provide: VariantService, useValue: variantService },
         { provide: WarehouseService, useValue: warehouseService },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

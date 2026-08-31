@@ -10,6 +10,7 @@ import {
 import * as bcrypt from 'bcryptjs';
 
 import { TenantUserManagementService } from './tenant-user-management.service';
+import { AuditService } from '../../audit/audit.service';
 import { User } from '../../auth/entities/user.entity';
 import { UserRole } from '../../auth/enum/user-role.enum';
 import { CacheService } from '../../common/services/cache.service';
@@ -48,6 +49,7 @@ describe('TenantUserManagementService', () => {
         TenantUserManagementService,
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: CacheService, useValue: cache },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

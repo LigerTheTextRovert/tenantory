@@ -4,9 +4,9 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { IsNull } from 'typeorm';
 
 import { WarehouseService } from './warehouse.service';
+import { AuditService } from '../audit/audit.service';
 import { Warehouse } from './entities/warehouse.entity';
 import { WarehouseQueryDto } from './dto/warehouse-query.dto';
-import { AuditService } from '../audit/audit.service';
 
 describe('WarehouseService', () => {
   let service: WarehouseService;

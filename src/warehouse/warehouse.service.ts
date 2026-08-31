@@ -24,7 +24,7 @@ export class WarehouseService {
   constructor(
     @InjectRepository(Warehouse)
     private readonly warehouseRepo: Repository<Warehouse>,
-    private readonly auditService: AuditService,
+    private readonly audit: AuditService,
   ) {}
 
   async create(tenantId: string, dto: CreateWarehouseDto): Promise<Warehouse> {
@@ -39,14 +39,11 @@ export class WarehouseService {
 
     try {
       const saved = await this.warehouseRepo.save(warehouse);
-      this.auditService.record({
+      this.audit.record({
         action: AuditAction.CREATE,
         entityType: AuditedEntityType.WAREHOUSE,
         entityId: saved.id,
-        newValues: {
-          name: saved.name,
-          location: saved.location ?? null,
-        },
+        newValues: { name: saved.name, location: saved.location },
       });
       return saved;
     } catch (error) {
@@ -136,10 +133,7 @@ export class WarehouseService {
     dto: UpdateWarehouseDto,
   ): Promise<Warehouse> {
     const warehouse = await this.findOne(tenantId, id);
-    const oldValues = {
-      name: warehouse.name,
-      location: warehouse.location ?? null,
-    };
+    const oldValues = { name: warehouse.name, location: warehouse.location };
 
     if (dto.name) {
       await this.assertNameUnique(tenantId, dto.name, id);
@@ -152,15 +146,12 @@ export class WarehouseService {
 
     try {
       const saved = await this.warehouseRepo.save(warehouse);
-      this.auditService.record({
+      this.audit.record({
         action: AuditAction.UPDATE,
         entityType: AuditedEntityType.WAREHOUSE,
         entityId: saved.id,
         oldValues,
-        newValues: {
-          name: saved.name,
-          location: saved.location ?? null,
-        },
+        newValues: { name: saved.name, location: saved.location },
       });
       return saved;
     } catch (error) {
@@ -175,15 +166,13 @@ export class WarehouseService {
 
   async remove(tenantId: string, id: string): Promise<void> {
     const warehouse = await this.findOne(tenantId, id);
+    const oldValues = { name: warehouse.name, location: warehouse.location };
     await this.warehouseRepo.softRemove(warehouse);
-    this.auditService.record({
+    this.audit.record({
       action: AuditAction.DELETE,
       entityType: AuditedEntityType.WAREHOUSE,
       entityId: warehouse.id,
-      oldValues: {
-        name: warehouse.name,
-        location: warehouse.location ?? null,
-      },
+      oldValues,
     });
   }
 

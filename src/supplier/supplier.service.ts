@@ -24,7 +24,7 @@ export class SupplierService {
   constructor(
     @InjectRepository(Supplier)
     private readonly supplierRepo: Repository<Supplier>,
-    private readonly auditService: AuditService,
+    private readonly audit: AuditService,
   ) {}
 
   async create(tenantId: string, dto: CreateSupplierDto): Promise<Supplier> {
@@ -42,14 +42,14 @@ export class SupplierService {
 
     try {
       const saved = await this.supplierRepo.save(supplier);
-      this.auditService.record({
+      this.audit.record({
         action: AuditAction.CREATE,
         entityType: AuditedEntityType.SUPPLIER,
         entityId: saved.id,
         newValues: {
           companyName: saved.companyName,
-          contactEmail: saved.contactEmail ?? null,
-          leadTimeDays: saved.leadTimeDays ?? null,
+          contactEmail: saved.contactEmail,
+          leadTimeDays: saved.leadTimeDays,
         },
       });
       return saved;
@@ -145,10 +145,10 @@ export class SupplierService {
     const supplier = await this.findOne(tenantId, id);
     const oldValues = {
       companyName: supplier.companyName,
-      contactEmail: supplier.contactEmail ?? null,
-      contactPhone: supplier.contactPhone ?? null,
-      address: supplier.address ?? null,
-      leadTimeDays: supplier.leadTimeDays ?? null,
+      contactEmail: supplier.contactEmail,
+      contactPhone: supplier.contactPhone,
+      address: supplier.address,
+      leadTimeDays: supplier.leadTimeDays,
     };
 
     if (dto.companyName) {
@@ -174,17 +174,17 @@ export class SupplierService {
 
     try {
       const saved = await this.supplierRepo.save(supplier);
-      this.auditService.record({
+      this.audit.record({
         action: AuditAction.UPDATE,
         entityType: AuditedEntityType.SUPPLIER,
         entityId: saved.id,
         oldValues,
         newValues: {
           companyName: saved.companyName,
-          contactEmail: saved.contactEmail ?? null,
-          contactPhone: saved.contactPhone ?? null,
-          address: saved.address ?? null,
-          leadTimeDays: saved.leadTimeDays ?? null,
+          contactEmail: saved.contactEmail,
+          contactPhone: saved.contactPhone,
+          address: saved.address,
+          leadTimeDays: saved.leadTimeDays,
         },
       });
       return saved;
@@ -200,15 +200,13 @@ export class SupplierService {
 
   async remove(tenantId: string, id: string): Promise<void> {
     const supplier = await this.findOne(tenantId, id);
+    const oldValues = { companyName: supplier.companyName };
     await this.supplierRepo.softRemove(supplier);
-    this.auditService.record({
+    this.audit.record({
       action: AuditAction.DELETE,
       entityType: AuditedEntityType.SUPPLIER,
       entityId: supplier.id,
-      oldValues: {
-        companyName: supplier.companyName,
-        contactEmail: supplier.contactEmail ?? null,
-      },
+      oldValues,
     });
   }
 

@@ -15,6 +15,9 @@ import { PaginatedResponse } from '../../common/interfaces/paginated-response.in
 import { ProductVariant } from '../entities/product-variant.entity';
 import { CacheService } from '../../common/services/cache.service';
 import { CACHE_TTL, CacheKeys } from '../../common/constants/cache.constants';
+import { AuditService } from '../../audit/audit.service';
+import { AuditAction } from '../../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../../audit/enums/audited-entity-type';
 
 @Injectable()
 export class ProductService {
@@ -23,6 +26,7 @@ export class ProductService {
     private readonly productRepo: Repository<Product>,
     private readonly categoryService: CategoryService,
     private readonly cache: CacheService,
+    private readonly audit: AuditService,
   ) {}
 
   async create(tenantId: string, dto: CreateProductDto): Promise<Product> {
@@ -41,6 +45,18 @@ export class ProductService {
 
     try {
       const result = await this.productRepo.save(newProduct);
+      this.audit.record({
+        action: AuditAction.CREATE,
+        entityType: AuditedEntityType.PRODUCT,
+        entityId: result.id,
+        newValues: {
+          name: result.name,
+          skuPrefix: result.skuPrefix,
+          categoryId: result.category?.id ?? null,
+          isActive: result.isActive,
+          description: result.description,
+        },
+      });
       await this.cache.delByPattern(CacheKeys.productsPattern(tenantId));
       return result;
     } catch (error) {
@@ -162,6 +178,12 @@ export class ProductService {
     dto: UpdateProductDto,
   ): Promise<Product> {
     const product = await this.findOne(tenantId, id);
+    const oldValues = {
+      name: product.name,
+      isActive: product.isActive,
+      description: product.description,
+      categoryId: product.category?.id ?? null,
+    };
 
     if (dto.skuPrefix && dto.skuPrefix !== product.skuPrefix) {
       throw new ConflictException(
@@ -188,6 +210,18 @@ export class ProductService {
 
     try {
       const saved = await this.productRepo.save(product);
+      this.audit.record({
+        action: AuditAction.UPDATE,
+        entityType: AuditedEntityType.PRODUCT,
+        entityId: saved.id,
+        oldValues,
+        newValues: {
+          name: saved.name,
+          isActive: saved.isActive,
+          description: saved.description,
+          categoryId: saved.category?.id ?? null,
+        },
+      });
       await this.cache.del(CacheKeys.product(tenantId, id));
       await this.cache.delByPattern(CacheKeys.productsPattern(tenantId));
       return saved;
@@ -221,6 +255,17 @@ export class ProductService {
     }
 
     await this.productRepo.softRemove(product);
+    this.audit.record({
+      action: AuditAction.DELETE_PRODUCT,
+      entityType: AuditedEntityType.PRODUCT,
+      entityId: product.id,
+      oldValues: {
+        name: product.name,
+        skuPrefix: product.skuPrefix,
+        categoryId: product.category?.id ?? null,
+        isActive: product.isActive,
+      },
+    });
     await this.cache.del(CacheKeys.product(tenantId, id));
     await this.cache.delByPattern(CacheKeys.productsPattern(tenantId));
   }

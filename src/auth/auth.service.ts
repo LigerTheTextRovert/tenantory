@@ -31,7 +31,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly jwtService: JwtService,
     private readonly cache: CacheService,
-    private readonly auditService: AuditService,
+    private readonly audit: AuditService,
   ) {}
 
   async register(tenantId: string, dto: RegisterDto) {
@@ -54,8 +54,7 @@ export class AuthService {
     });
 
     const savedUser = await this.userRepo.save(newUser);
-
-    this.auditService.record({
+    this.audit.record({
       action: AuditAction.CREATE,
       entityType: AuditedEntityType.USER,
       entityId: savedUser.id,
@@ -66,7 +65,6 @@ export class AuthService {
         role: savedUser.role,
       },
     });
-
     return this.toUserResponseDto(savedUser);
   }
 
@@ -92,13 +90,13 @@ export class AuthService {
 
     const { accessToken } = await this.generateTokens(user);
 
-    // actorId is intentionally absent here: no JWT has been validated yet,
-    // so the secure context carries no user. The subject is identified via
-    // entityId, and the audit listener persists the row with actorId=null.
-    this.auditService.record({
+    // LOGIN has no authenticated request context yet, so the actor is the
+    // authenticated user themselves (trusted system flow, not client input).
+    this.audit.record({
       action: AuditAction.LOGIN,
       entityType: AuditedEntityType.USER,
       entityId: user.id,
+      actorId: user.id,
     });
 
     return accessToken;

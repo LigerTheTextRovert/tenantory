@@ -1,11 +1,12 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { auditAsyncStorage } from './audit-context';
 import {
   AUDIT_EVENT_EMITTER,
@@ -18,38 +19,20 @@ import {
 } from './events/audit.event';
 import { Audit } from './entities/audit.entity';
 import { AuditQueryDto } from './dto/audit-query.dto';
-import { AuditAction } from './enums/audit-action.enum';
-import { AuditedEntityType } from './enums/audited-entity-type';
 import {
   PaginatedResponse,
-  PaginationMeta,
   PaginationLinks,
+  PaginationMeta,
 } from '../common/interfaces/paginated-response.interface';
 
-export interface AuditLogReadModel {
+export interface AuditActorSummary {
   id: string;
-  tenantId: string;
-  actorId: string | null;
-  action: AuditAction;
-  entityType: AuditedEntityType;
-  entityId: string;
-  oldValues: Record<string, unknown> | null;
-  newValues: Record<string, unknown> | null;
-  metadata: {
-    ipAddress?: string | null;
-    userAgent?: string | null;
-    requestId?: string | null;
-    reason?: string | null;
-  } | null;
-  createdAt: Date;
-  actor: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    role: string;
-  } | null;
+  email: string;
+  firstName: string;
+  lastName: string;
 }
+
+export type AuditLogReadModel = Audit & { actor: AuditActorSummary | null };
 
 @Injectable()
 export class AuditService {
@@ -76,7 +59,7 @@ export class AuditService {
 
     const event: AuditEvent = {
       tenantId: context.tenantId,
-      actorId: context.actorId,
+      actorId: input.actorId ?? context.actorId,
       action: input.action,
       entityType: input.entityType,
       entityId: input.entityId,
@@ -97,45 +80,17 @@ export class AuditService {
     tenantId: string,
     query: AuditQueryDto,
   ): Promise<PaginatedResponse<AuditLogReadModel>> {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    this.assertDateRange(query);
 
-    const qb = this.auditRepo
-      .createQueryBuilder('audit')
-      .leftJoin('audit.actor', 'actor')
-      .select([
-        'audit.id',
-        'audit.tenantId',
-        'audit.actorId',
-        'audit.action',
-        'audit.entityType',
-        'audit.entityId',
-        'audit.oldValues',
-        'audit.newValues',
-        'audit.metadata',
-        'audit.createdAt',
-        'actor.id',
-        'actor.email',
-        'actor.firstName',
-        'actor.lastName',
-        'actor.role',
-      ])
-      .where('audit.tenantId = :tenantId', { tenantId });
-
-    this.applyFilters(qb, query);
-
-    qb.orderBy('audit.createdAt', 'DESC');
-
-    const [data, totalItems] = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
+    const [data, totalItems] = await this.buildLogQuery(tenantId, query)
+      .skip(((query.page ?? 1) - 1) * (query.limit ?? 20))
+      .take(query.limit ?? 20)
       .getManyAndCount();
 
     return this.buildPaginatedResponse(
-      data as AuditLogReadModel[],
+      data,
       totalItems,
-      page,
-      limit,
+      query,
       '/api/v1/audit/logs',
     );
   }
@@ -145,86 +100,87 @@ export class AuditService {
     entityId: string,
     query: AuditQueryDto,
   ): Promise<PaginatedResponse<AuditLogReadModel>> {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
+    this.assertDateRange(query);
 
-    const qb = this.auditRepo
-      .createQueryBuilder('audit')
-      .leftJoin('audit.actor', 'actor')
-      .select([
-        'audit.id',
-        'audit.tenantId',
-        'audit.actorId',
-        'audit.action',
-        'audit.entityType',
-        'audit.entityId',
-        'audit.oldValues',
-        'audit.newValues',
-        'audit.metadata',
-        'audit.createdAt',
-        'actor.id',
-        'actor.email',
-        'actor.firstName',
-        'actor.lastName',
-        'actor.role',
-      ])
-      .where('audit.tenantId = :tenantId', { tenantId })
-      .andWhere('audit.entityId = :entityId', { entityId });
-
-    this.applyFilters(qb, query);
-
-    qb.orderBy('audit.createdAt', 'DESC');
-
-    const [data, totalItems] = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
+    const [data, totalItems] = await this.buildLogQuery(tenantId, query)
+      .andWhere('log.entity_id = :entityId', { entityId })
+      .skip(((query.page ?? 1) - 1) * (query.limit ?? 20))
+      .take(query.limit ?? 20)
       .getManyAndCount();
 
     return this.buildPaginatedResponse(
-      data as AuditLogReadModel[],
+      data,
       totalItems,
-      page,
-      limit,
+      query,
       `/api/v1/audit/logs/${entityId}`,
     );
   }
 
-  private applyFilters(
-    qb: ReturnType<typeof this.auditRepo.createQueryBuilder>,
+  private buildLogQuery(
+    tenantId: string,
     query: AuditQueryDto,
-  ): void {
+  ): SelectQueryBuilder<Audit> {
+    const qb = this.auditRepo
+      .createQueryBuilder('log')
+      .where('log.tenant_id = :tenantId', { tenantId })
+      .leftJoin('log.actor', 'actor')
+      .addSelect([
+        'actor.id',
+        'actor.email',
+        'actor.firstName',
+        'actor.lastName',
+      ]);
+
     if (query.actorId) {
-      qb.andWhere('audit.actorId = :actorId', { actorId: query.actorId });
+      qb.andWhere('log.actor_id = :actorId', { actorId: query.actorId });
     }
 
     if (query.action) {
-      qb.andWhere('audit.action = :action', { action: query.action });
+      qb.andWhere('log.action = :action', { action: query.action });
     }
 
     if (query.entityType) {
-      qb.andWhere('audit.entityType = :entityType', {
+      qb.andWhere('log.entity_type = :entityType', {
         entityType: query.entityType,
       });
     }
 
     if (query.startDate) {
-      qb.andWhere('audit.createdAt >= :startDate', {
+      qb.andWhere('log.created_at >= :startDate', {
         startDate: query.startDate,
       });
     }
 
     if (query.endDate) {
-      qb.andWhere('audit.createdAt <= :endDate', { endDate: query.endDate });
+      qb.andWhere('log.created_at <= :endDate', { endDate: query.endDate });
+    }
+
+    qb.orderBy('log.created_at', 'DESC').addOrderBy('log.id', 'DESC');
+
+    return qb;
+  }
+
+  private assertDateRange(query: AuditQueryDto): void {
+    if (!query.startDate || !query.endDate) {
+      return;
+    }
+
+    const start = new Date(query.startDate);
+    const end = new Date(query.endDate);
+
+    if (start.getTime() > end.getTime()) {
+      throw new BadRequestException('startDate must not be after endDate');
     }
   }
 
   private buildPaginatedResponse(
-    data: AuditLogReadModel[],
+    data: Audit[],
     totalItems: number,
-    page: number,
-    limit: number,
+    query: AuditQueryDto,
     basePath: string,
   ): PaginatedResponse<AuditLogReadModel> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
     const totalPages = Math.ceil(totalItems / limit) || 1;
 
     const buildLink = (targetPage: number): string =>
@@ -245,6 +201,6 @@ export class AuditService {
       last: buildLink(totalPages),
     };
 
-    return { data, meta, links };
+    return { data: data, meta, links };
   }
 }

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { VariantService } from './variant.service';
+import { AuditService } from '../../audit/audit.service';
 import { ProductVariant } from '../entities/product-variant.entity';
 import { Product } from '../entities/product.entity';
 import { CreateVariantDto } from './dto/create-variant.dto';
@@ -51,6 +52,7 @@ describe('VariantService', () => {
         VariantService,
         { provide: getRepositoryToken(ProductVariant), useValue: variantRepo },
         { provide: getRepositoryToken(Product), useValue: productRepo },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

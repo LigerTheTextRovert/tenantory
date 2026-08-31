@@ -12,7 +12,7 @@ export class TenantSettingService {
   constructor(
     @InjectRepository(TenantSetting)
     private readonly tenantSettingRepo: Repository<TenantSetting>,
-    private readonly auditService: AuditService,
+    private readonly audit: AuditService,
   ) {}
 
   async getSettings(tenantId: string): Promise<TenantSetting> {
@@ -32,7 +32,7 @@ export class TenantSettingService {
     dto: UpdateSettingsDto,
   ): Promise<TenantSetting> {
     const settings = await this.getSettings(tenantId);
-    const oldConfig = settings.config ?? null;
+    const oldConfig = settings.config;
 
     if (dto.config) {
       settings.config = {
@@ -42,15 +42,13 @@ export class TenantSettingService {
     }
 
     const saved = await this.tenantSettingRepo.save(settings);
-
-    this.auditService.record({
+    this.audit.record({
       action: AuditAction.UPDATE,
-      entityType: AuditedEntityType.TENANT,
-      entityId: tenantId,
+      entityType: AuditedEntityType.TENANT_SETTING,
+      entityId: saved.id,
       oldValues: { config: oldConfig },
       newValues: { config: saved.config },
     });
-
     return saved;
   }
 }

@@ -17,6 +17,9 @@ import {
 } from '../common/interfaces/paginated-response.interface';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { isUniqueViolation } from '../common/utils/assert-unique.util';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../audit/enums/audited-entity-type';
 import { CacheService } from '../common/services/cache.service';
 import { CACHE_TTL, CacheKeys } from '../common/constants/cache.constants';
 
@@ -26,6 +29,7 @@ export class CategoryService {
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
     private readonly cache: CacheService,
+    private readonly audit: AuditService,
   ) {}
 
   async create(tenantId: string, dto: CreateCategoryDto): Promise<Category> {
@@ -51,6 +55,12 @@ export class CategoryService {
 
     try {
       await this.categoryRepo.save(category);
+      this.audit.record({
+        action: AuditAction.CREATE,
+        entityType: AuditedEntityType.CATEGORY,
+        entityId: category.id,
+        newValues: { name: category.name, slug: category.slug },
+      });
       await this.invalidateCollections(tenantId);
       return category;
     } catch (err) {
@@ -195,6 +205,11 @@ export class CategoryService {
     dto: UpdateCategoryDto,
   ): Promise<Category> {
     const target = await this.findOne(tenantId, id);
+    const oldValues = {
+      name: target.name,
+      slug: target.slug,
+      parentId: target.parent?.id ?? null,
+    };
 
     if (dto.name) {
       target.name = dto.name;
@@ -223,6 +238,17 @@ export class CategoryService {
 
     try {
       const saved = await this.categoryRepo.save(target);
+      this.audit.record({
+        action: AuditAction.UPDATE,
+        entityType: AuditedEntityType.CATEGORY,
+        entityId: saved.id,
+        oldValues,
+        newValues: {
+          name: saved.name,
+          slug: saved.slug,
+          parentId: saved.parent?.id ?? null,
+        },
+      });
       await this.cache.del(CacheKeys.category(tenantId, id));
       await this.invalidateCollections(tenantId);
       return saved;
@@ -250,6 +276,12 @@ export class CategoryService {
     }
 
     await this.categoryRepo.softRemove(target);
+    this.audit.record({
+      action: AuditAction.DELETE,
+      entityType: AuditedEntityType.CATEGORY,
+      entityId: target.id,
+      oldValues: { name: target.name, slug: target.slug },
+    });
     await this.cache.del(CacheKeys.category(tenantId, id));
     await this.invalidateCollections(tenantId);
   }

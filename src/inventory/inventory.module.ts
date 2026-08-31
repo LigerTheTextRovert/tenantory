@@ -5,6 +5,7 @@ import { InventoryService } from './inventory.service';
 import { InventoryController } from './inventory.controller';
 import { WarehouseModule } from '../warehouse/warehouse.module';
 import { CatalogModule } from '../catalog/catalog.module';
+import { AuditModule } from '../audit/audit.module';
 import { WarehouseService } from '../warehouse/warehouse.service';
 
 @Module({
@@ -12,6 +13,7 @@ import { WarehouseService } from '../warehouse/warehouse.service';
     TypeOrmModule.forFeature([StockLevel]),
     WarehouseModule,
     CatalogModule,
+    AuditModule,
   ],
   providers: [InventoryService, WarehouseService],
   controllers: [InventoryController],

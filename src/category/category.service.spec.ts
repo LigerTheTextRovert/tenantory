@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { IsNull } from 'typeorm';
 import { CategoryService } from './category.service';
+import { AuditService } from '../audit/audit.service';
 import { Category } from './entities/category.entity';
 import { CategoryQueryDto } from './dto/category-query.dto';
 import { CacheService } from '../common/services/cache.service';
@@ -68,6 +69,7 @@ describe('CategoryService', () => {
         CategoryService,
         { provide: getRepositoryToken(Category), useValue: categoryRepo },
         { provide: CacheService, useValue: cache },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

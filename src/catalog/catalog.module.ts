@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Product } from './entities/product.entity';
 import { ProductVariant } from './entities/product-variant.entity';
 import { CategoryModule } from '../category/category.module';
+import { AuditModule } from '../audit/audit.module';
 import { ProductService } from './product/product.service';
 import { ProductController } from './product/product.controller';
 import { VariantService } from './variant/variant.service';
@@ -12,6 +13,7 @@ import { VariantController } from './variant/variant.controller';
   imports: [
     TypeOrmModule.forFeature([Product, ProductVariant]),
     CategoryModule,
+    AuditModule,
   ],
   providers: [ProductService, VariantService],
   controllers: [ProductController, VariantController],

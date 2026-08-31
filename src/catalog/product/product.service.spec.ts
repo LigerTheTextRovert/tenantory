@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { IsNull } from 'typeorm';
 import { ProductService } from './product.service';
+import { AuditService } from '../../audit/audit.service';
 import { Product } from '../entities/product.entity';
 import { CategoryService } from '../../category/category.service';
 import { ProductQueryDto } from './dto/product-query.dto';
@@ -74,6 +75,7 @@ describe('ProductService', () => {
         { provide: getRepositoryToken(Product), useValue: productRepo },
         { provide: CategoryService, useValue: categoryService },
         { provide: CacheService, useValue: cache },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

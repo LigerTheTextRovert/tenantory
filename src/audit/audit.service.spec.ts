@@ -1,15 +1,21 @@
 import { Test } from '@nestjs/testing';
-import { InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { AuditService } from './audit.service';
 import { AUDIT_EVENT_EMITTER } from './audit-event-emitter.port';
 import { auditAsyncStorage } from './audit-context';
 import { AUDIT_LOG_EVENT, AuditEventInput } from './events/audit.event';
 import { AuditAction } from './enums/audit-action.enum';
 import { AuditedEntityType } from './enums/audited-entity-type';
+import { Audit } from './entities/audit.entity';
 
 describe('AuditService', () => {
   let service: AuditService;
   let emit: jest.Mock;
+  let auditRepo: Record<string, jest.Mock>;
 
   const TENANT_ID = '22222222-2222-2222-2222-222222222222';
   const ACTOR_ID = '33333333-3333-3333-3333-333333333333';
@@ -24,11 +30,13 @@ describe('AuditService', () => {
 
   beforeEach(async () => {
     emit = jest.fn();
+    auditRepo = { createQueryBuilder: jest.fn() };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         AuditService,
         { provide: AUDIT_EVENT_EMITTER, useValue: { emit } },
+        { provide: getRepositoryToken(Audit), useValue: auditRepo },
       ],
     }).compile();
 
@@ -128,5 +136,105 @@ describe('AuditService', () => {
         },
       }),
     );
+  });
+
+  describe('findLogs', () => {
+    const row = { id: 'log-1', tenantId: TENANT_ID } as Audit;
+    let qb: Record<string, jest.Mock>;
+
+    beforeEach(() => {
+      qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getManyAndCount: jest.fn().mockResolvedValue([[row], 1]),
+      };
+      auditRepo.createQueryBuilder.mockReturnValue(qb);
+    });
+
+    it('always scopes the query to the caller tenant (RLF)', async () => {
+      await service.findLogs(TENANT_ID, {});
+
+      expect(qb.where).toHaveBeenCalledWith('log.tenant_id = :tenantId', {
+        tenantId: TENANT_ID,
+      });
+    });
+
+    it('selects only the safe actor summary columns (never passwordHash)', async () => {
+      await service.findLogs(TENANT_ID, {});
+
+      expect(qb.addSelect).toHaveBeenCalledWith([
+        'actor.id',
+        'actor.email',
+        'actor.firstName',
+        'actor.lastName',
+      ]);
+    });
+
+    it('applies the optional filters and paginates', async () => {
+      await service.findLogs(TENANT_ID, {
+        page: 2,
+        limit: 10,
+        actorId: ACTOR_ID,
+        action: AuditAction.CREATE,
+        entityType: AuditedEntityType.PRODUCT,
+        startDate: '2026-08-01T00:00:00.000Z',
+        endDate: '2026-08-31T23:59:59.999Z',
+      });
+
+      const filters = (qb.andWhere.mock.calls as unknown[][]).map(
+        (call) => call[0],
+      );
+      expect(filters).toContain('log.actor_id = :actorId');
+      expect(filters).toContain('log.action = :action');
+      expect(filters).toContain('log.entity_type = :entityType');
+      expect(filters).toContain('log.created_at >= :startDate');
+      expect(filters).toContain('log.created_at <= :endDate');
+      expect(qb.skip).toHaveBeenCalledWith(10);
+      expect(qb.take).toHaveBeenCalledWith(10);
+    });
+
+    it('builds the paginated envelope', async () => {
+      const response = await service.findLogs(TENANT_ID, {
+        page: 1,
+        limit: 20,
+      });
+
+      expect(response.data).toEqual([row]);
+      expect(response.meta).toMatchObject({
+        totalItems: 1,
+        itemCount: 1,
+        itemsPerPage: 20,
+        totalPages: 1,
+        currentPage: 1,
+      });
+      expect(response.links.first).toContain('/api/v1/audit/logs?page=1');
+    });
+
+    it('rejects an inverted date range', async () => {
+      await expect(
+        service.findLogs(TENANT_ID, {
+          startDate: '2026-08-31T00:00:00.000Z',
+          endDate: '2026-08-01T00:00:00.000Z',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('scopes entity logs to the tenant and the entity id', async () => {
+      await service.findEntityLogs(TENANT_ID, baseInput.entityId, {});
+
+      const filters = (qb.andWhere.mock.calls as unknown[][]).map(
+        (call) => call[0],
+      );
+      expect(filters).toContain('log.entity_id = :entityId');
+      expect(qb.where).toHaveBeenCalledWith('log.tenant_id = :tenantId', {
+        tenantId: TENANT_ID,
+      });
+    });
   });
 });
