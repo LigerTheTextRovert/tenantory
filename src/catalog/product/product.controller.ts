@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiOperation,
@@ -25,6 +26,10 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
 import { Product } from '../entities/product.entity';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RoleGuard } from '../../auth/guards/role.guard';
+import { Roles } from '../../auth/decorators/auth.decorator';
+import { UserRole } from '../../auth/enum/user-role.enum';
 
 @ApiTags('Products')
 @Controller('products')
@@ -105,6 +110,8 @@ export class ProductController {
     status: 409,
     description: 'SKU prefix already exists or category not found',
   })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async create(
     @TenantDecorator('id') tenantId: string,
     @Body() dto: CreateProductDto,
@@ -118,6 +125,8 @@ export class ProductController {
   @ApiResponse({ status: 200, description: 'Product updated' })
   @ApiResponse({ status: 404, description: 'Product not found' })
   @ApiResponse({ status: 409, description: 'SKU prefix change not allowed' })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async update(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -133,6 +142,8 @@ export class ProductController {
   @ApiResponse({ status: 204, description: 'Product deleted' })
   @ApiResponse({ status: 404, description: 'Product not found' })
   @ApiResponse({ status: 409, description: 'Product has active variants' })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async delete(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,

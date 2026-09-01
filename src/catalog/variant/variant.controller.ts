@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiOperation,
@@ -25,6 +26,10 @@ import { UpdateVariantDto } from './dto/update-variant.dto';
 import { VariantQueryDto } from './dto/variant-query.dto';
 import { PaginatedResponse } from '../../common/interfaces/paginated-response.interface';
 import { ProductVariant } from '../entities/product-variant.entity';
+import { RoleGuard } from '../../auth/guards/role.guard';
+import { UserRole } from '../../auth/enum/user-role.enum';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { Roles } from '../../auth/decorators/auth.decorator';
 
 @ApiTags('Product Variants')
 @Controller('products/:productId/variants')
@@ -115,6 +120,8 @@ export class VariantController {
     status: 409,
     description: 'SKU already exists within tenant',
   })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async create(
     @TenantDecorator('id') tenantId: string,
     @Param('productId', ParseUUIDPipe) productId: string,
@@ -130,6 +137,8 @@ export class VariantController {
   @ApiResponse({ status: 200, description: 'Variant updated' })
   @ApiResponse({ status: 404, description: 'Variant not found' })
   @ApiResponse({ status: 409, description: 'SKU already exists within tenant' })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async update(
     @TenantDecorator('id') tenantId: string,
     @Param('productId', ParseUUIDPipe) productId: string,
@@ -146,6 +155,8 @@ export class VariantController {
   @ApiParam({ name: 'variantId', type: String, description: 'Variant UUID' })
   @ApiResponse({ status: 204, description: 'Variant deleted' })
   @ApiResponse({ status: 404, description: 'Variant not found' })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async remove(
     @TenantDecorator('id') tenantId: string,
     @Param('productId', ParseUUIDPipe) productId: string,
