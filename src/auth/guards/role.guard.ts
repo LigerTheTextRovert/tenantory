@@ -35,10 +35,6 @@ export class RoleGuard implements CanActivate {
       throw new UnauthorizedException('User not authenticated');
     }
 
-    if (user.role === UserRole.SUPER_ADMIN) {
-      return true;
-    }
-
     const hasRequiredRoles = requiredRoles.some((role) => role === user.role);
 
     if (!hasRequiredRoles) {
