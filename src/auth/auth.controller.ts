@@ -58,7 +58,6 @@ export class AuthController {
     status: 401,
     description: 'Invalid credentials or deactivated account.',
   })
-  @UseGuards(JwtAuthGuard, RoleGuard)
   async login(@TenantDecorator('id') tenantId: string, @Body() dto: LoginDto) {
     return this.authService.login(tenantId, dto);
   }
