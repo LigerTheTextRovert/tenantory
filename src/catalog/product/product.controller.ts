@@ -13,6 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -32,7 +33,10 @@ import { Roles } from '../../auth/decorators/auth.decorator';
 import { UserRole } from '../../auth/enum/user-role.enum';
 
 @ApiTags('Products')
+@ApiBearerAuth()
 @Controller('products')
+@UseGuards(JwtAuthGuard, RoleGuard)
+@Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
@@ -110,8 +114,6 @@ export class ProductController {
     status: 409,
     description: 'SKU prefix already exists or category not found',
   })
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async create(
     @TenantDecorator('id') tenantId: string,
     @Body() dto: CreateProductDto,
@@ -125,8 +127,6 @@ export class ProductController {
   @ApiResponse({ status: 200, description: 'Product updated' })
   @ApiResponse({ status: 404, description: 'Product not found' })
   @ApiResponse({ status: 409, description: 'SKU prefix change not allowed' })
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async update(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -142,8 +142,6 @@ export class ProductController {
   @ApiResponse({ status: 204, description: 'Product deleted' })
   @ApiResponse({ status: 404, description: 'Product not found' })
   @ApiResponse({ status: 409, description: 'Product has active variants' })
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async delete(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,

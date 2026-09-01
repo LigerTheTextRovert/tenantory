@@ -13,6 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -32,7 +33,10 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { Roles } from '../../auth/decorators/auth.decorator';
 
 @ApiTags('Product Variants')
+@ApiBearerAuth()
 @Controller('products/:productId/variants')
+@UseGuards(JwtAuthGuard, RoleGuard)
+@Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
 export class VariantController {
   constructor(private readonly variantService: VariantService) {}
 
@@ -85,6 +89,7 @@ export class VariantController {
   })
   @ApiResponse({ status: 200, description: 'Paginated list of variants' })
   @ApiResponse({ status: 404, description: 'Product not found' })
+  @UseGuards(JwtAuthGuard, RoleGuard)
   async findAll(
     @TenantDecorator('id') tenantId: string,
     @Param('productId', ParseUUIDPipe) productId: string,
@@ -99,6 +104,7 @@ export class VariantController {
   @ApiParam({ name: 'variantId', type: String, description: 'Variant UUID' })
   @ApiResponse({ status: 200, description: 'Variant found' })
   @ApiResponse({ status: 404, description: 'Variant not found' })
+  @UseGuards(JwtAuthGuard, RoleGuard)
   async findOne(
     @TenantDecorator('id') tenantId: string,
     @Param('productId', ParseUUIDPipe) productId: string,
@@ -116,12 +122,7 @@ export class VariantController {
     status: 404,
     description: 'Product not found',
   })
-  @ApiResponse({
-    status: 409,
-    description: 'SKU already exists within tenant',
-  })
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
+  @ApiResponse({ status: 409, description: 'SKU already exists within tenant' })
   async create(
     @TenantDecorator('id') tenantId: string,
     @Param('productId', ParseUUIDPipe) productId: string,
@@ -137,8 +138,6 @@ export class VariantController {
   @ApiResponse({ status: 200, description: 'Variant updated' })
   @ApiResponse({ status: 404, description: 'Variant not found' })
   @ApiResponse({ status: 409, description: 'SKU already exists within tenant' })
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async update(
     @TenantDecorator('id') tenantId: string,
     @Param('productId', ParseUUIDPipe) productId: string,
@@ -155,8 +154,6 @@ export class VariantController {
   @ApiParam({ name: 'variantId', type: String, description: 'Variant UUID' })
   @ApiResponse({ status: 204, description: 'Variant deleted' })
   @ApiResponse({ status: 404, description: 'Variant not found' })
-  @UseGuards(JwtAuthGuard, RoleGuard)
-  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   async remove(
     @TenantDecorator('id') tenantId: string,
     @Param('productId', ParseUUIDPipe) productId: string,

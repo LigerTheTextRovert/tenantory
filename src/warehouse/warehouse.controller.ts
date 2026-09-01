@@ -17,6 +17,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiSecurity,
+  ApiBearerAuth,
   ApiParam,
 } from '@nestjs/swagger';
 import { WarehouseService } from './warehouse.service';
@@ -31,8 +32,10 @@ import { UserRole } from '../auth/enum/user-role.enum';
 
 @ApiTags('Warehouses')
 @ApiSecurity('X-Tenant-Id')
+@ApiBearerAuth()
 @Controller('warehouse')
 @UseGuards(JwtAuthGuard, RoleGuard)
+@Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
 export class WarehouseController {
   constructor(private readonly warehouseService: WarehouseService) {}
 
@@ -44,7 +47,6 @@ export class WarehouseController {
   })
   @ApiResponse({ status: 200, description: 'Paginated warehouse list.' })
   @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
-  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   findAll(
     @TenantDecorator('id') tenantId: string,
     @Query() query: WarehouseQueryDto,
@@ -60,7 +62,6 @@ export class WarehouseController {
   @ApiParam({ name: 'id', description: 'Warehouse UUID', type: String })
   @ApiResponse({ status: 200, description: 'Warehouse found.' })
   @ApiResponse({ status: 404, description: 'Warehouse not found.' })
-  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   findOne(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -79,7 +80,6 @@ export class WarehouseController {
     status: 409,
     description: 'Warehouse name already exists within this tenant.',
   })
-  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   create(
     @TenantDecorator('id') tenantId: string,
     @Body() dto: CreateWarehouseDto,
@@ -100,7 +100,6 @@ export class WarehouseController {
     status: 409,
     description: 'Warehouse name conflict within this tenant.',
   })
-  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   update(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -118,7 +117,6 @@ export class WarehouseController {
   @ApiParam({ name: 'id', description: 'Warehouse UUID', type: String })
   @ApiResponse({ status: 204, description: 'Warehouse deleted.' })
   @ApiResponse({ status: 404, description: 'Warehouse not found.' })
-  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   remove(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
