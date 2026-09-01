@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -23,6 +24,10 @@ import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
 import { WarehouseQueryDto } from './dto/warehouse-query.dto';
 import { TenantDecorator } from '../common/decorators/tenant.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RoleGuard } from '../auth/guards/role.guard';
+import { Roles } from '../auth/decorators/auth.decorator';
+import { UserRole } from '../auth/enum/user-role.enum';
 
 @ApiTags('Warehouses')
 @ApiSecurity('X-Tenant-Id')
@@ -38,6 +43,8 @@ export class WarehouseController {
   })
   @ApiResponse({ status: 200, description: 'Paginated warehouse list.' })
   @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   findAll(
     @TenantDecorator('id') tenantId: string,
     @Query() query: WarehouseQueryDto,
@@ -53,6 +60,8 @@ export class WarehouseController {
   @ApiParam({ name: 'id', description: 'Warehouse UUID', type: String })
   @ApiResponse({ status: 200, description: 'Warehouse found.' })
   @ApiResponse({ status: 404, description: 'Warehouse not found.' })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   findOne(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -71,6 +80,8 @@ export class WarehouseController {
     status: 409,
     description: 'Warehouse name already exists within this tenant.',
   })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   create(
     @TenantDecorator('id') tenantId: string,
     @Body() dto: CreateWarehouseDto,
@@ -91,6 +102,8 @@ export class WarehouseController {
     status: 409,
     description: 'Warehouse name conflict within this tenant.',
   })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   update(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -108,6 +121,8 @@ export class WarehouseController {
   @ApiParam({ name: 'id', description: 'Warehouse UUID', type: String })
   @ApiResponse({ status: 204, description: 'Warehouse deleted.' })
   @ApiResponse({ status: 404, description: 'Warehouse not found.' })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   remove(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
