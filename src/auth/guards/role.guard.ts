@@ -19,12 +19,12 @@ export interface RequestWithUser extends Request {
 export class RoleGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
   canActivate(context: ExecutionContext): boolean {
-    const requiredRole = this.reflector.getAllAndOverride<UserRole[]>(
+    const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(
       ROLES_KEY,
       [context.getHandler(), context.getClass()],
     );
 
-    if (!requiredRole) {
+    if (!requiredRoles) {
       return true;
     }
 
@@ -39,7 +39,7 @@ export class RoleGuard implements CanActivate {
       return true;
     }
 
-    const hasRequiredRoles = requiredRole.some((role) => role === user.role);
+    const hasRequiredRoles = requiredRoles.some((role) => role === user.role);
 
     if (!hasRequiredRoles) {
       throw new ForbiddenException('Insufficient role permissions');
