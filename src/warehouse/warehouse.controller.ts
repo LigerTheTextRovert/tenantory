@@ -32,6 +32,7 @@ import { UserRole } from '../auth/enum/user-role.enum';
 @ApiTags('Warehouses')
 @ApiSecurity('X-Tenant-Id')
 @Controller('warehouse')
+@UseGuards(JwtAuthGuard, RoleGuard)
 export class WarehouseController {
   constructor(private readonly warehouseService: WarehouseService) {}
 
@@ -43,7 +44,6 @@ export class WarehouseController {
   })
   @ApiResponse({ status: 200, description: 'Paginated warehouse list.' })
   @ApiResponse({ status: 400, description: 'Invalid query parameters.' })
-  @UseGuards(JwtAuthGuard, RoleGuard)
   @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   findAll(
     @TenantDecorator('id') tenantId: string,
@@ -60,7 +60,6 @@ export class WarehouseController {
   @ApiParam({ name: 'id', description: 'Warehouse UUID', type: String })
   @ApiResponse({ status: 200, description: 'Warehouse found.' })
   @ApiResponse({ status: 404, description: 'Warehouse not found.' })
-  @UseGuards(JwtAuthGuard, RoleGuard)
   @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   findOne(
     @TenantDecorator('id') tenantId: string,
@@ -80,7 +79,6 @@ export class WarehouseController {
     status: 409,
     description: 'Warehouse name already exists within this tenant.',
   })
-  @UseGuards(JwtAuthGuard, RoleGuard)
   @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   create(
     @TenantDecorator('id') tenantId: string,
@@ -102,7 +100,6 @@ export class WarehouseController {
     status: 409,
     description: 'Warehouse name conflict within this tenant.',
   })
-  @UseGuards(JwtAuthGuard, RoleGuard)
   @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   update(
     @TenantDecorator('id') tenantId: string,
@@ -121,7 +118,6 @@ export class WarehouseController {
   @ApiParam({ name: 'id', description: 'Warehouse UUID', type: String })
   @ApiResponse({ status: 204, description: 'Warehouse deleted.' })
   @ApiResponse({ status: 404, description: 'Warehouse not found.' })
-  @UseGuards(JwtAuthGuard, RoleGuard)
   @Roles(UserRole.TENANT_ADMIN, UserRole.WAREHOUSE_MANAGER)
   remove(
     @TenantDecorator('id') tenantId: string,
