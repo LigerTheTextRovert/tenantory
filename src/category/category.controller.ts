@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -23,6 +24,10 @@ import { TenantDecorator } from '../common/decorators/tenant.decorator';
 import { CategoryQueryDto } from './dto/category-query.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { Roles } from '../auth/decorators/auth.decorator';
+import { UserRole } from '../auth/enum/user-role.enum';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RoleGuard } from '../auth/guards/role.guard';
 
 @ApiTags('Categories')
 @ApiSecurity('X-Tenant-Id')
@@ -64,6 +69,7 @@ export class CategoryController {
   @ApiParam({ name: 'id', description: 'Category UUID', type: String })
   @ApiResponse({ status: 200, description: 'Category found.' })
   @ApiResponse({ status: 404, description: 'Category not found.' })
+  @UseGuards(JwtAuthGuard)
   findOne(
     @TenantDecorator('id') tenantId: string,
     @Param('id', ParseUUIDPipe) id: string,
@@ -83,6 +89,8 @@ export class CategoryController {
     status: 409,
     description: 'Slug already exists within this tenant.',
   })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   create(
     @TenantDecorator('id') tenantId: string,
     @Body() dto: CreateCategoryDto,
@@ -104,6 +112,8 @@ export class CategoryController {
     status: 409,
     description: 'Slug conflict or attempt to set category as its own parent.',
   })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   update(
     @TenantDecorator('id') tenantId: string,
     @Param('id') id: string,
@@ -125,6 +135,8 @@ export class CategoryController {
     status: 409,
     description: 'Cannot delete — category has children.',
   })
+  @UseGuards(JwtAuthGuard, RoleGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.CATALOG_MANAGER)
   remove(@TenantDecorator('id') tenantId: string, @Param('id') id: string) {
     return this.categoryService.remove(tenantId, id);
   }
