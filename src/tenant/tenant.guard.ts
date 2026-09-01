@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,10 +21,6 @@ export class TenantGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const tenantContext = tenantAsyncStorage.getStore();
-    if (!tenantContext) {
-      return false;
-    }
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -28,6 +30,11 @@ export class TenantGuard implements CanActivate {
       return true;
     }
 
+    const tenantContext = tenantAsyncStorage.getStore();
+    if (!tenantContext?.tenantId) {
+      throw new UnauthorizedException('Missing or invalid tenant context');
+    }
+
     const tenant = await this.tenantRepo.findOne({
       where: {
         id: tenantContext.tenantId,
@@ -35,10 +42,10 @@ export class TenantGuard implements CanActivate {
       },
     });
 
-    if (tenant) {
-      return true;
+    if (!tenant) {
+      throw new ForbiddenException('Tenant not found or has been removed');
     }
 
-    return false;
+    return true;
   }
 }
