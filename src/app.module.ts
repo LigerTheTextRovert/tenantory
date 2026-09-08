@@ -15,7 +15,6 @@ import { SupplierModule } from './supplier/supplier.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-// import { dataSourceOption } from './config/db.config';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 import { TenantMiddleware } from './tenant/tenant.middleware';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
@@ -61,10 +60,15 @@ import { AuditModule } from './audit/audit.module';
 
         autoLoadEntities: true,
 
-        // synchronize: process.env.DB_SYNCHRONIZE === 'true',
-        synchronize: false,
-        logging: process.env.NODE_ENV === 'development',
+        synchronize: process.env.DB_SYNCHRONIZE === 'true',
 
+        extra: {
+          max: 10,
+          idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 5000,
+        },
+
+        logging: process.env.NODE_ENV === 'development',
         namingStrategy: new SnakeNamingStrategy(),
         cache: true,
       }),
