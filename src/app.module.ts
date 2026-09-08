@@ -61,7 +61,8 @@ import { AuditModule } from './audit/audit.module';
 
         autoLoadEntities: true,
 
-        synchronize: process.env.DB_SYNCHRONIZE === 'true',
+        // synchronize: process.env.DB_SYNCHRONIZE === 'true',
+        synchronize: false,
         logging: process.env.NODE_ENV === 'development',
 
         namingStrategy: new SnakeNamingStrategy(),
