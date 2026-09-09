@@ -1,7 +1,7 @@
-import { AsyncLocalStorage } from 'async_hooks';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 export interface TenantContextData {
-  tenantId: string;
+	tenantId: string;
 }
 
 export const tenantAsyncStorage = new AsyncLocalStorage<TenantContextData>();
