@@ -1,235 +1,235 @@
 import {
-	ConflictException,
-	Injectable,
-	NotFoundException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, type Repository } from 'typeorm';
-import type { AuditService } from '../audit/audit.service';
-import { AuditAction } from '../audit/enums/audit-action.enum';
-import { AuditedEntityType } from '../audit/enums/audited-entity-type';
-import type {
-	PaginatedResponse,
-	PaginationLinks,
-	PaginationMeta,
+import { Supplier } from './entities/supplier.entity';
+import { IsNull, Repository } from 'typeorm';
+import { CreateSupplierDto } from './dto/create-supplier.dto';
+import { UpdateSupplierDto } from './dto/update-supplier.dto';
+import { SupplierQueryDto } from './dto/supplier-query.dto';
+import {
+  PaginatedResponse,
+  PaginationLinks,
+  PaginationMeta,
 } from '../common/interfaces/paginated-response.interface';
 import { isUniqueViolation } from '../common/utils/assert-unique.util';
-import type { CreateSupplierDto } from './dto/create-supplier.dto';
-import type { SupplierQueryDto } from './dto/supplier-query.dto';
-import type { UpdateSupplierDto } from './dto/update-supplier.dto';
-import { Supplier } from './entities/supplier.entity';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../audit/enums/audit-action.enum';
+import { AuditedEntityType } from '../audit/enums/audited-entity-type';
 
 @Injectable()
 export class SupplierService {
-	constructor(
-		@InjectRepository(Supplier)
-		private readonly supplierRepo: Repository<Supplier>,
-		private readonly audit: AuditService,
-	) {}
+  constructor(
+    @InjectRepository(Supplier)
+    private readonly supplierRepo: Repository<Supplier>,
+    private readonly audit: AuditService,
+  ) {}
 
-	async create(tenantId: string, dto: CreateSupplierDto): Promise<Supplier> {
-		await this.assertCompanyNameUnique(tenantId, dto.companyName);
+  async create(tenantId: string, dto: CreateSupplierDto): Promise<Supplier> {
+    await this.assertCompanyNameUnique(tenantId, dto.companyName);
 
-		const supplier = this.supplierRepo.create({
-			companyName: dto.companyName,
-			contactEmail: dto.contactEmail,
-			contactPhone: dto.contactPhone,
-			address: dto.address,
-			leadTimeDays: dto.leadTimeDays,
-			tenantId,
-			tenant: { id: tenantId },
-		});
+    const supplier = this.supplierRepo.create({
+      companyName: dto.companyName,
+      contactEmail: dto.contactEmail,
+      contactPhone: dto.contactPhone,
+      address: dto.address,
+      leadTimeDays: dto.leadTimeDays,
+      tenantId,
+      tenant: { id: tenantId },
+    });
 
-		try {
-			const saved = await this.supplierRepo.save(supplier);
-			this.audit.record({
-				action: AuditAction.CREATE,
-				entityType: AuditedEntityType.SUPPLIER,
-				entityId: saved.id,
-				newValues: {
-					companyName: saved.companyName,
-					contactEmail: saved.contactEmail,
-					leadTimeDays: saved.leadTimeDays,
-				},
-			});
-			return saved;
-		} catch (error) {
-			if (isUniqueViolation(error)) {
-				throw new ConflictException(
-					'A supplier with this company name already exists for this tenant',
-				);
-			}
-			throw error;
-		}
-	}
+    try {
+      const saved = await this.supplierRepo.save(supplier);
+      this.audit.record({
+        action: AuditAction.CREATE,
+        entityType: AuditedEntityType.SUPPLIER,
+        entityId: saved.id,
+        newValues: {
+          companyName: saved.companyName,
+          contactEmail: saved.contactEmail,
+          leadTimeDays: saved.leadTimeDays,
+        },
+      });
+      return saved;
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException(
+          'A supplier with this company name already exists for this tenant',
+        );
+      }
+      throw error;
+    }
+  }
 
-	async findAll(
-		tenantId: string,
-		query: SupplierQueryDto,
-	): Promise<PaginatedResponse<Supplier>> {
-		const page = query.page ?? 1;
-		const limit = query.limit ?? 10;
-		const skip = (page - 1) * limit;
+  async findAll(
+    tenantId: string,
+    query: SupplierQueryDto,
+  ): Promise<PaginatedResponse<Supplier>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
 
-		const qb = this.supplierRepo
-			.createQueryBuilder('s')
-			.where('s.tenant_id = :tenantId', { tenantId })
-			.andWhere('s.deleted_at IS NULL');
+    const qb = this.supplierRepo
+      .createQueryBuilder('s')
+      .where('s.tenant_id = :tenantId', { tenantId })
+      .andWhere('s.deleted_at IS NULL');
 
-		if (query.search) {
-			qb.andWhere('s.company_name ILIKE :search', {
-				search: `%${query.search}%`,
-			});
-		}
+    if (query.search) {
+      qb.andWhere('s.company_name ILIKE :search', {
+        search: `%${query.search}%`,
+      });
+    }
 
-		const sortColumns: Record<string, string> = {
-			company_name: 's.company_name',
-			lead_time_days: 's.lead_time_days',
-			created_at: 's.created_at',
-			updated_at: 's.updated_at',
-		};
+    const sortColumns: Record<string, string> = {
+      company_name: 's.company_name',
+      lead_time_days: 's.lead_time_days',
+      created_at: 's.created_at',
+      updated_at: 's.updated_at',
+    };
 
-		qb.orderBy(sortColumns[query.sortBy as string], query.sortOrder);
+    qb.orderBy(sortColumns[query.sortBy as string], query.sortOrder);
 
-		const [data, totalItems] = await qb
-			.skip(skip)
-			.take(query.limit)
-			.getManyAndCount();
+    const [data, totalItems] = await qb
+      .skip(skip)
+      .take(query.limit)
+      .getManyAndCount();
 
-		const totalPages = Math.ceil(totalItems / limit) || 1;
+    const totalPages = Math.ceil(totalItems / limit) || 1;
 
-		const buildLink = (page: number): string =>
-			`/api/v1/suppliers?page=${page}&limit=${limit}`;
+    const buildLink = (page: number): string =>
+      `/api/v1/suppliers?page=${page}&limit=${limit}`;
 
-		const meta: PaginationMeta = {
-			totalItems,
-			itemCount: data.length,
-			itemsPerPage: limit,
-			totalPages,
-			currentPage: page,
-		};
+    const meta: PaginationMeta = {
+      totalItems,
+      itemCount: data.length,
+      itemsPerPage: limit,
+      totalPages,
+      currentPage: page,
+    };
 
-		const links: PaginationLinks = {
-			first: buildLink(1),
-			previous: page > 1 ? buildLink(page - 1) : null,
-			next: page < totalPages ? buildLink(page + 1) : null,
-			last: buildLink(totalPages),
-		};
+    const links: PaginationLinks = {
+      first: buildLink(1),
+      previous: page > 1 ? buildLink(page - 1) : null,
+      next: page < totalPages ? buildLink(page + 1) : null,
+      last: buildLink(totalPages),
+    };
 
-		return { data, meta, links };
-	}
+    return { data, meta, links };
+  }
 
-	async findOne(tenantId: string, id: string): Promise<Supplier> {
-		const supplier = await this.supplierRepo.findOne({
-			where: {
-				tenantId,
-				id,
-				deletedAt: IsNull(),
-			},
-		});
+  async findOne(tenantId: string, id: string): Promise<Supplier> {
+    const supplier = await this.supplierRepo.findOne({
+      where: {
+        tenantId,
+        id,
+        deletedAt: IsNull(),
+      },
+    });
 
-		if (!supplier) {
-			throw new NotFoundException(
-				`Supplier with ID "${id}" not found for tenant ${tenantId}`,
-			);
-		}
+    if (!supplier) {
+      throw new NotFoundException(
+        `Supplier with ID "${id}" not found for tenant ${tenantId}`,
+      );
+    }
 
-		return supplier;
-	}
+    return supplier;
+  }
 
-	async update(
-		tenantId: string,
-		id: string,
-		dto: UpdateSupplierDto,
-	): Promise<Supplier> {
-		const supplier = await this.findOne(tenantId, id);
-		const oldValues = {
-			companyName: supplier.companyName,
-			contactEmail: supplier.contactEmail,
-			contactPhone: supplier.contactPhone,
-			address: supplier.address,
-			leadTimeDays: supplier.leadTimeDays,
-		};
+  async update(
+    tenantId: string,
+    id: string,
+    dto: UpdateSupplierDto,
+  ): Promise<Supplier> {
+    const supplier = await this.findOne(tenantId, id);
+    const oldValues = {
+      companyName: supplier.companyName,
+      contactEmail: supplier.contactEmail,
+      contactPhone: supplier.contactPhone,
+      address: supplier.address,
+      leadTimeDays: supplier.leadTimeDays,
+    };
 
-		if (dto.companyName) {
-			await this.assertCompanyNameUnique(tenantId, dto.companyName, id);
-			supplier.companyName = dto.companyName;
-		}
+    if (dto.companyName) {
+      await this.assertCompanyNameUnique(tenantId, dto.companyName, id);
+      supplier.companyName = dto.companyName;
+    }
 
-		if (dto.contactEmail !== undefined) {
-			supplier.contactEmail = dto.contactEmail;
-		}
+    if (dto.contactEmail !== undefined) {
+      supplier.contactEmail = dto.contactEmail;
+    }
 
-		if (dto.contactPhone !== undefined) {
-			supplier.contactPhone = dto.contactPhone;
-		}
+    if (dto.contactPhone !== undefined) {
+      supplier.contactPhone = dto.contactPhone;
+    }
 
-		if (dto.address !== undefined) {
-			supplier.address = dto.address;
-		}
+    if (dto.address !== undefined) {
+      supplier.address = dto.address;
+    }
 
-		if (dto.leadTimeDays !== undefined) {
-			supplier.leadTimeDays = dto.leadTimeDays;
-		}
+    if (dto.leadTimeDays !== undefined) {
+      supplier.leadTimeDays = dto.leadTimeDays;
+    }
 
-		try {
-			const saved = await this.supplierRepo.save(supplier);
-			this.audit.record({
-				action: AuditAction.UPDATE,
-				entityType: AuditedEntityType.SUPPLIER,
-				entityId: saved.id,
-				oldValues,
-				newValues: {
-					companyName: saved.companyName,
-					contactEmail: saved.contactEmail,
-					contactPhone: saved.contactPhone,
-					address: saved.address,
-					leadTimeDays: saved.leadTimeDays,
-				},
-			});
-			return saved;
-		} catch (error) {
-			if (isUniqueViolation(error)) {
-				throw new ConflictException(
-					'A supplier with this company name already exists for this tenant',
-				);
-			}
-			throw error;
-		}
-	}
+    try {
+      const saved = await this.supplierRepo.save(supplier);
+      this.audit.record({
+        action: AuditAction.UPDATE,
+        entityType: AuditedEntityType.SUPPLIER,
+        entityId: saved.id,
+        oldValues,
+        newValues: {
+          companyName: saved.companyName,
+          contactEmail: saved.contactEmail,
+          contactPhone: saved.contactPhone,
+          address: saved.address,
+          leadTimeDays: saved.leadTimeDays,
+        },
+      });
+      return saved;
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException(
+          'A supplier with this company name already exists for this tenant',
+        );
+      }
+      throw error;
+    }
+  }
 
-	async remove(tenantId: string, id: string): Promise<void> {
-		const supplier = await this.findOne(tenantId, id);
-		const oldValues = { companyName: supplier.companyName };
-		await this.supplierRepo.softRemove(supplier);
-		this.audit.record({
-			action: AuditAction.DELETE,
-			entityType: AuditedEntityType.SUPPLIER,
-			entityId: supplier.id,
-			oldValues,
-		});
-	}
+  async remove(tenantId: string, id: string): Promise<void> {
+    const supplier = await this.findOne(tenantId, id);
+    const oldValues = { companyName: supplier.companyName };
+    await this.supplierRepo.softRemove(supplier);
+    this.audit.record({
+      action: AuditAction.DELETE,
+      entityType: AuditedEntityType.SUPPLIER,
+      entityId: supplier.id,
+      oldValues,
+    });
+  }
 
-	private async assertCompanyNameUnique(
-		tenantId: string,
-		companyName: string,
-		excludeId?: string,
-	): Promise<void> {
-		const qb = this.supplierRepo
-			.createQueryBuilder('s')
-			.where('s.tenant_id = :tenantId', { tenantId })
-			.andWhere('s.company_name = :companyName', { companyName })
-			.andWhere('s.deleted_at IS NULL');
+  private async assertCompanyNameUnique(
+    tenantId: string,
+    companyName: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const qb = this.supplierRepo
+      .createQueryBuilder('s')
+      .where('s.tenant_id = :tenantId', { tenantId })
+      .andWhere('s.company_name = :companyName', { companyName })
+      .andWhere('s.deleted_at IS NULL');
 
-		if (excludeId) {
-			qb.andWhere('s.id != :excludeId', { excludeId });
-		}
+    if (excludeId) {
+      qb.andWhere('s.id != :excludeId', { excludeId });
+    }
 
-		const exists = await qb.getExists();
-		if (exists) {
-			throw new ConflictException(
-				'A supplier with this company name already exists for this tenant',
-			);
-		}
-	}
+    const exists = await qb.getExists();
+    if (exists) {
+      throw new ConflictException(
+        'A supplier with this company name already exists for this tenant',
+      );
+    }
+  }
 }

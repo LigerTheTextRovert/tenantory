@@ -1,22 +1,22 @@
-import { createParamDecorator, type ExecutionContext } from '@nestjs/common';
-import type { Tenant } from '../../tenant/entities/tenant.entity';
-import type { TenantRequest } from '../../tenant/tenant.type';
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { Tenant } from '../../tenant/entities/tenant.entity';
+import { TenantRequest } from '../../tenant/tenant.type';
 
 export const TenantDecorator = createParamDecorator(
-	(
-		data: 'id' | 'object' | undefined,
-		ctx: ExecutionContext,
-	): string | Tenant => {
-		const req = ctx.switchToHttp().getRequest<TenantRequest>();
+  (
+    data: 'id' | 'object' | undefined,
+    ctx: ExecutionContext,
+  ): string | Tenant => {
+    const req = ctx.switchToHttp().getRequest<TenantRequest>();
 
-		if (data === 'id') {
-			return req.tenantId;
-		}
+    if (data === 'id') {
+      return req.tenantId;
+    }
 
-		if (data === 'object') {
-			return req.tenant;
-		}
+    if (data === 'object') {
+      return req.tenant;
+    }
 
-		return req.tenantId;
-	},
+    return req.tenantId;
+  },
 );

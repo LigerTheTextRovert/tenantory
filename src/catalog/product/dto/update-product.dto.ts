@@ -1,5 +1,6 @@
-import { ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
+import { PartialType, OmitType } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateProductDto } from './create-product.dto';
 
 /**
@@ -10,16 +11,16 @@ import { CreateProductDto } from './create-product.dto';
  * this by throwing ConflictException on skuPrefix changes.
  */
 export class UpdateProductDto extends PartialType(
-	OmitType(CreateProductDto, ['description'] as const),
+  OmitType(CreateProductDto, ['description'] as const),
 ) {
-	@ApiPropertyOptional({
-		description: 'Product description (explicit null clears it)',
-		example: 'A comfortable cotton t-shirt',
-		maxLength: 5000,
-		nullable: true,
-	})
-	@IsOptional()
-	@IsString()
-	@MaxLength(5000)
-	description?: string | null;
+  @ApiPropertyOptional({
+    description: 'Product description (explicit null clears it)',
+    example: 'A comfortable cotton t-shirt',
+    maxLength: 5000,
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  description?: string | null;
 }

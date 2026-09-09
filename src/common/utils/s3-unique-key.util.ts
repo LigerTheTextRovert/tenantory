@@ -1,5 +1,5 @@
-import { extname } from 'node:path';
+import { extname } from 'path';
 
 export function generateUniqueKey(tenantId: string, fileName: string) {
-	return `${crypto.randomUUID()}-${tenantId}/${extname(fileName)}`;
+  return `${crypto.randomUUID()}-${tenantId}/${extname(fileName)}`;
 }

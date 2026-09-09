@@ -1,33 +1,33 @@
 import { Type } from 'class-transformer';
 import {
-	IsInt,
-	IsOptional,
-	IsString,
-	IsUUID,
-	MaxLength,
-	Min,
-	MinLength,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+  MinLength,
 } from 'class-validator';
 
 export class ReserveStockDto {
-	@IsUUID()
-	warehouseId: string;
+  @IsUUID()
+  warehouseId: string;
 
-	@IsUUID()
-	variantId: string;
+  @IsUUID()
+  variantId: string;
 
-	@Type(() => Number)
-	@IsInt()
-	@Min(1)
-	quantity: number;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quantity: number;
 
-	@IsUUID()
-	@IsOptional()
-	referenceId?: string;
+  @IsUUID()
+  @IsOptional()
+  referenceId?: string;
 
-	@IsString()
-	@IsOptional()
-	@MinLength(1)
-	@MaxLength(255)
-	reason?: string;
+  @IsString()
+  @IsOptional()
+  @MinLength(1)
+  @MaxLength(255)
+  reason?: string;
 }

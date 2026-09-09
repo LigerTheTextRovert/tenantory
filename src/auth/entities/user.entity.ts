@@ -1,14 +1,14 @@
 import {
-	Column,
-	CreateDateColumn,
-	DeleteDateColumn,
-	Entity,
-	Index,
-	JoinColumn,
-	ManyToOne,
-	PrimaryGeneratedColumn,
-	Unique,
-	UpdateDateColumn,
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  UpdateDateColumn,
+  DeleteDateColumn,
+  ManyToOne,
+  JoinColumn,
+  Index,
+  Unique,
 } from 'typeorm';
 import { Tenant } from '../../tenant/entities/tenant.entity';
 import { UserRole } from '../enum/user-role.enum';
@@ -17,44 +17,44 @@ import { UserRole } from '../enum/user-role.enum';
 @Unique('idx_users_tenant_email_unique', ['tenant', 'email'])
 @Index('idx_users_tenant_id', ['tenant'])
 export class User {
-	@PrimaryGeneratedColumn('uuid')
-	id: string;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-	@Column({ type: 'uuid', name: 'tenant_id' })
-	tenantId: string;
+  @Column({ type: 'uuid', name: 'tenant_id' })
+  tenantId: string;
 
-	@ManyToOne(() => Tenant, { onDelete: 'CASCADE' })
-	@JoinColumn({ name: 'tenant_id' })
-	tenant: Tenant;
+  @ManyToOne(() => Tenant, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'tenant_id' })
+  tenant: Tenant;
 
-	@Column({ type: 'varchar', length: 255 })
-	email: string;
+  @Column({ type: 'varchar', length: 255 })
+  email: string;
 
-	@Column({ type: 'varchar', length: 255, name: 'first_name' })
-	firstName: string;
+  @Column({ type: 'varchar', length: 255, name: 'first_name' })
+  firstName: string;
 
-	@Column({ type: 'varchar', length: 255, name: 'last_name' })
-	lastName: string;
+  @Column({ type: 'varchar', length: 255, name: 'last_name' })
+  lastName: string;
 
-	@Column({ type: 'varchar', length: 255, name: 'password_hash' })
-	passwordHash: string;
+  @Column({ type: 'varchar', length: 255, name: 'password_hash' })
+  passwordHash: string;
 
-	@Column({
-		type: 'enum',
-		enum: UserRole,
-		default: UserRole.CUSTOMER,
-	})
-	role: UserRole;
+  @Column({
+    type: 'enum',
+    enum: UserRole,
+    default: UserRole.CUSTOMER,
+  })
+  role: UserRole;
 
-	@Column({ type: 'boolean', default: true, name: 'is_active' })
-	isActive: boolean;
+  @Column({ type: 'boolean', default: true, name: 'is_active' })
+  isActive: boolean;
 
-	@CreateDateColumn({ type: 'timestamp', name: 'created_at' })
-	createdAt: Date;
+  @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
+  createdAt: Date;
 
-	@UpdateDateColumn({ type: 'timestamp', name: 'updated_at' })
-	updatedAt: Date;
+  @UpdateDateColumn({ type: 'timestamp', name: 'updated_at' })
+  updatedAt: Date;
 
-	@DeleteDateColumn({ type: 'timestamp', name: 'deleted_at', nullable: true })
-	deletedAt: Date | null;
+  @DeleteDateColumn({ type: 'timestamp', name: 'deleted_at', nullable: true })
+  deletedAt: Date | null;
 }
