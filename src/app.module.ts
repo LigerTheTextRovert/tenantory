@@ -27,6 +27,7 @@ import { AppLoggerModule } from './logger/app-logger.module';
 import { AdminModule } from './admin/admin.module';
 import { RedisModule } from './redis/redis.module';
 import { AuditModule } from './audit/audit.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { AuditModule } from './audit/audit.module';
     MediaModule,
     AdminModule,
     AuditModule,
+    SearchModule,
     AppLoggerModule,
   ],
   controllers: [AppController],
