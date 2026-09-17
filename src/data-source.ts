@@ -3,8 +3,9 @@ import { DataSource } from 'typeorm';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { config } from 'dotenv';
 
-// Load environment variables
 config();
+
+const isProd = process.env.NODE_ENV === 'production';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -13,9 +14,8 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME || 'tenantory_user',
   password: process.env.DB_PASSWORD || 'tenantory_pass',
   database: process.env.DB_DATABASE || 'tenantory_db',
-  // entities: ['dist/**/*.entity.js'], // Use compiled JS files
-  entities: ['src/**/*.entity.ts'],
-  migrations: ['src/migrations/*.ts'],
+  entities: isProd ? ['dist/**/*.entity.js'] : ['src/**/*.entity.ts'],
+  migrations: isProd ? ['dist/migrations/*.js'] : ['src/migrations/*.ts'],
   namingStrategy: new SnakeNamingStrategy(),
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',

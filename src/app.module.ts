@@ -42,7 +42,9 @@ import { NotificationsModule } from './notifications/notifications.module';
       isGlobal: true,
       client: new S3Client({
         region: 'us-east-1',
-        endpoint: 'http://localhost:9000',
+        endpoint:
+          process.env.MINIO_ENDPOINT ||
+          `http://localhost:${process.env.MINIO_API_PORT || 9000}`,
         credentials: {
           accessKeyId: process.env.MINIO_ROOT_USER || 'tenantory_minio_user',
           secretAccessKey:
