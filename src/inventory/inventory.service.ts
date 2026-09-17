@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -29,11 +30,21 @@ import { ReserveStockDto } from './dto/reserve-stock.dto';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/enums/audit-action.enum';
 import { AuditedEntityType } from '../audit/enums/audited-entity-type';
+import {
+  INVENTORY_EVENT_EMITTER,
+  InventoryEventEmitter,
+} from './inventory-event-emitter.port';
+import { STOCK_MOVEMENT_EVENT } from './events/stock-movement.event';
 
-interface StockMovementAudit {
+interface StockMovement {
+  tenantId: string;
   stockLevelId: string;
+  variantId: string;
+  warehouseId: string;
+  sku?: string;
   before: { availableQuantity: number; reservedQuantity: number };
   after: { availableQuantity: number; reservedQuantity: number };
+  safetyThreshold: number;
 }
 
 @Injectable()
@@ -46,6 +57,8 @@ export class InventoryService {
     private readonly variantService: VariantService,
     private readonly warehouseService: WarehouseService,
     private readonly audit: AuditService,
+    @Inject(INVENTORY_EVENT_EMITTER)
+    private readonly eventEmitter: InventoryEventEmitter,
   ) {}
 
   private readonly retryOptions: RetryOptions = {
@@ -63,7 +76,7 @@ export class InventoryService {
       this.warehouseService.findOne(tenantId, dto.warehouseId),
     ]);
 
-    let movement: StockMovementAudit | undefined;
+    let movement: StockMovement | undefined;
 
     await retryWithBackoff(async () => {
       await this.dataSource.transaction(async (manager) => {
@@ -96,19 +109,24 @@ export class InventoryService {
         await manager.save(stockLevel);
 
         movement = {
+          tenantId,
           stockLevelId: stockLevel.id,
+          variantId: variant.id,
+          warehouseId: warehouse.id,
+          sku: variant.sku,
           before,
           after: {
             availableQuantity: stockLevel.availableQuantity,
             reservedQuantity: stockLevel.reservedQuantity,
           },
+          safetyThreshold: stockLevel.safetyThreshold,
         };
       });
     }, this.retryOptions);
 
     // Emitted only after the transaction has committed successfully
     if (movement) {
-      this.recordStockMovement(movement);
+      this.publishStockMovement(movement);
     }
   }
 
@@ -206,7 +224,7 @@ export class InventoryService {
       this.variantService.findOneById(tenantId, dto.variantId),
     ]);
 
-    let movement: StockMovementAudit | undefined;
+    let movement: StockMovement | undefined;
 
     const saved = await retryWithBackoff(async () => {
       return this.dataSource.transaction(async (manager) => {
@@ -228,12 +246,17 @@ export class InventoryService {
         const result = await manager.save(stock);
 
         movement = {
+          tenantId,
           stockLevelId: stock.id,
+          variantId: variant.id,
+          warehouseId: warehouse.id,
+          sku: variant.sku,
           before,
           after: {
             availableQuantity: stock.availableQuantity,
             reservedQuantity: stock.reservedQuantity,
           },
+          safetyThreshold: stock.safetyThreshold,
         };
 
         return result;
@@ -242,14 +265,14 @@ export class InventoryService {
 
     // Emitted only after the transaction has committed successfully
     if (movement) {
-      this.recordStockMovement(movement);
+      this.publishStockMovement(movement);
     }
 
     return saved;
   }
 
   async reserveStock(tenantId: string, dto: ReserveStockDto): Promise<void> {
-    let movement: StockMovementAudit | undefined;
+    let movement: StockMovement | undefined;
 
     await retryWithBackoff(async () => {
       return this.dataSource.transaction(async (manager) => {
@@ -281,24 +304,28 @@ export class InventoryService {
         await manager.save(stockLevel);
 
         movement = {
+          tenantId,
           stockLevelId: stockLevel.id,
+          variantId: dto.variantId,
+          warehouseId: dto.warehouseId,
           before,
           after: {
             availableQuantity: stockLevel.availableQuantity,
             reservedQuantity: stockLevel.reservedQuantity,
           },
+          safetyThreshold: stockLevel.safetyThreshold,
         };
       });
     }, this.retryOptions);
 
     // Emitted only after the transaction has committed successfully
     if (movement) {
-      this.recordStockMovement(movement);
+      this.publishStockMovement(movement);
     }
   }
 
   async releaseStock(tenantId: string, dto: ReleaseStockDto): Promise<void> {
-    let movement: StockMovementAudit | undefined;
+    let movement: StockMovement | undefined;
 
     await retryWithBackoff(async () => {
       return this.dataSource.transaction(async (manager) => {
@@ -331,23 +358,27 @@ export class InventoryService {
         await manager.save(stockLevel);
 
         movement = {
+          tenantId,
           stockLevelId: stockLevel.id,
+          variantId: dto.variantId,
+          warehouseId: dto.warehouseId,
           before,
           after: {
             availableQuantity: stockLevel.availableQuantity,
             reservedQuantity: stockLevel.reservedQuantity,
           },
+          safetyThreshold: stockLevel.safetyThreshold,
         };
       });
     }, this.retryOptions);
 
     // Emitted only after the transaction has committed successfully
     if (movement) {
-      this.recordStockMovement(movement);
+      this.publishStockMovement(movement);
     }
   }
 
-  private recordStockMovement(movement: StockMovementAudit): void {
+  private publishStockMovement(movement: StockMovement): void {
     this.audit.record({
       action: AuditAction.UPDATE_INVENTORY,
       entityType: AuditedEntityType.STOCK_LEVEL,
@@ -355,6 +386,8 @@ export class InventoryService {
       oldValues: movement.before,
       newValues: movement.after,
     });
+
+    this.eventEmitter.emit(STOCK_MOVEMENT_EVENT, movement);
   }
 
   private createLink(page: number, limit: number) {
