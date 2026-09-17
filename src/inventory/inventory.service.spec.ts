@@ -5,6 +5,8 @@ import { DataSource, OptimisticLockVersionMismatchError } from 'typeorm';
 
 import { InventoryService } from './inventory.service';
 import { AuditService } from '../audit/audit.service';
+import { INVENTORY_EVENT_EMITTER } from './inventory-event-emitter.port';
+import { STOCK_MOVEMENT_EVENT } from './events/stock-movement.event';
 import { StockLevel } from './entities/stock-level.entity';
 import { VariantService } from '../catalog/variant/variant.service';
 import { WarehouseService } from '../warehouse/warehouse.service';
@@ -28,6 +30,9 @@ describe('InventoryService', () => {
   };
   let warehouseService: {
     findOne: jest.Mock;
+  };
+  let stockEventEmitter: {
+    emit: jest.Mock;
   };
   let entityManager: {
     getRepository: jest.Mock;
@@ -79,6 +84,10 @@ describe('InventoryService', () => {
       findOne: jest.fn(),
     };
 
+    stockEventEmitter = {
+      emit: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InventoryService,
@@ -87,6 +96,10 @@ describe('InventoryService', () => {
         { provide: VariantService, useValue: variantService },
         { provide: WarehouseService, useValue: warehouseService },
         { provide: AuditService, useValue: { record: jest.fn() } },
+        {
+          provide: INVENTORY_EVENT_EMITTER,
+          useValue: stockEventEmitter,
+        },
       ],
     }).compile();
 
@@ -111,6 +124,8 @@ describe('InventoryService', () => {
       const stockLevel = {
         tenantId: TENANT_ID,
         availableQuantity: 10,
+        reservedQuantity: 0,
+        safetyThreshold: 20,
         variant: mockVariant,
         warehouse: mockWarehouse,
       } as StockLevel;
@@ -140,6 +155,18 @@ describe('InventoryService', () => {
       });
       expect(stockLevel.availableQuantity).toBe(5);
       expect(entityManager.save).toHaveBeenCalledWith(stockLevel);
+      expect(stockEventEmitter.emit).toHaveBeenCalledWith(
+        STOCK_MOVEMENT_EVENT,
+        expect.objectContaining({
+          tenantId: TENANT_ID,
+          stockLevelId: stockLevel.id,
+          variantId: VARIANT_ID,
+          warehouseId: WAREHOUSE_ID,
+          before: { availableQuantity: 10, reservedQuantity: 0 },
+          after: { availableQuantity: 5, reservedQuantity: 0 },
+          safetyThreshold: 20,
+        }),
+      );
     });
 
     it('should throw NotFoundException if stock level is not found', async () => {

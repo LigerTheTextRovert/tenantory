@@ -28,6 +28,7 @@ import { AdminModule } from './admin/admin.module';
 import { RedisModule } from './redis/redis.module';
 import { AuditModule } from './audit/audit.module';
 import { SearchModule } from './search/search.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { SearchModule } from './search/search.module';
     AdminModule,
     AuditModule,
     SearchModule,
+    NotificationsModule,
     AppLoggerModule,
   ],
   controllers: [AppController],
