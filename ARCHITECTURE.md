@@ -170,9 +170,8 @@ src/
 ├── admin/                           # Stub — empty module
 ├── audit/                           # Stub — empty module
 ├── search/                          # Stub — empty module
-├── media/                           # Stub — empty module
-├── notifications/                   # Stub — empty module
-└── import-export/                   # Stub — empty module
+├── media/                             # Stub — empty module
+└── notifications/                     # Stub — empty module
 ```
 
 ---
@@ -269,7 +268,7 @@ src/
 - [ ] `TenantBaseRepository` — auto-inject `tenantId` into queries
 - [ ] pg_trgm fuzzy search
 - [ ] MinIO media storage
-- [ ] BullMQ job queues (import/export)
+- [ ] BullMQ job queues (media processing)
 - [ ] TypeORM migrations directory
 
 ### Phase 6 — Production Readiness
