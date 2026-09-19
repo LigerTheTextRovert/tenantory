@@ -10,6 +10,7 @@ import { TenantRequest } from './tenant.type';
 import { TenantService } from './tenant.service';
 import { isUUID } from 'class-validator';
 import { TenantStatus } from './entities/tenant.entity';
+import { tenantAsyncStorage } from './tenant-context';
 
 @Injectable()
 export class TenantMiddleware implements NestMiddleware {
@@ -46,6 +47,8 @@ export class TenantMiddleware implements NestMiddleware {
     req.tenantId = tenantId;
     req.tenant = tenant;
 
-    next();
+    // Guards run before interceptors, so the ALS tenant context must be
+    // established here — otherwise TenantGuard always sees an empty store.
+    return tenantAsyncStorage.run({ tenantId }, () => next());
   }
 }
