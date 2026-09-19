@@ -29,6 +29,8 @@ import { RedisModule } from './redis/redis.module';
 import { AuditModule } from './audit/audit.module';
 import { SearchModule } from './search/search.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PrometheusModule } from './prometheus/prometheus.module';
+import { HttpMetricsMiddleware } from './prometheus/http-metrics.middleware';
 
 @Module({
   imports: [
@@ -91,21 +93,29 @@ import { NotificationsModule } from './notifications/notifications.module';
     SearchModule,
     NotificationsModule,
     AppLoggerModule,
+    PrometheusModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    // Registered first so the duration metric covers the entire in-app
+    // request lifetime: middleware (incl. tenant resolution), guards,
+    // handlers, serialization — plus unmatched (404) and 5xx responses.
+    consumer.apply(HttpMetricsMiddleware).forRoutes('*');
+
     consumer.apply(RequestIdMiddleware).forRoutes('*');
 
-    // In your app.module.ts or where you configure the middleware
+    // Metrics scraping is unauthenticated and tenant-agnostic — it must not
+    // pass through TenantMiddleware (or the global TenantGuard, bypassed via
+    // @Public() on the controller).
     consumer
       .apply(TenantMiddleware)
       .exclude(
         { path: 'v1/tenants', method: RequestMethod.ALL },
         { path: 'v1/tenants/(.*)', method: RequestMethod.ALL },
-        // { path: 'auth/(.*)', method: RequestMethod.ALL },
+        { path: 'v1/prometheus', method: RequestMethod.ALL },
       )
       .forRoutes('*');
   }
