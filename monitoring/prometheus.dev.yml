@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # NestJS app running on the host machine (dev compose only).
+  # Requires the `host.docker.internal:host-gateway` extra_host on Linux.
+  - job_name: tenantory-app
+    metrics_path: /api/v1/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:3000']
