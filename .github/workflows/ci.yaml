@@ -41,7 +41,7 @@ jobs:
         run: pnpm run lint
 
       - name: Check formatting
-        run: pnpm run format:check
+        run: pnpm run format
 
       - name: Build project
         run: pnpm run build
